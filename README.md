@@ -12,15 +12,15 @@ To allow for a more transparent and reproducible comparison of PEFT methods, we 
 
 ```
 Experiment YAML ──▶ Runner (CLI)
-                      │
-        ┌─────────────┼─────────────┬───────────────┐
-        ▼             ▼             ▼               ▼
-   MODEL_REGISTRY  ADAPTER_REG  DATASET_REGISTRY  EVALUATOR_REG
-        │             │             │               │
-   hf_causal_lm    lora         hf_dataset       loss
-   hf_vlm          qlora                        (custom)
-   (custom)        prefix_tuning
-                   (custom)
+                           │
+       ┌───────────────────┼───────────────────┬───────────────────┐
+       ▼                   ▼                   ▼                   ▼
+MODEL_REGISTRY     ADAPTER_REGISTRY    DATASET_REGISTRY   EVALUATOR_REGISTRY
+       │                   │                   │                   │
+ hf_causal_lm        lora                hf_dataset          loss
+ hf_vlm              qlora                                   (custom)
+ (custom)            prefix_tuning
+                     (custom)
 ```
 
 Every component registers itself via a decorator, so adding a new adapter is one file with zero changes to existing code.
@@ -107,6 +107,11 @@ class MyTrainer(BaseTrainer):
         # your training loop
         return model
 ```
+
+## **Example Notebooks**
+
+For an interactive tutorial on setting up and running experiments with SITA, check out our getting started notebook:
+- [`examples/getting_started.ipynb`](examples/getting_started.ipynb)
 
 ## **Example Configs**
 
