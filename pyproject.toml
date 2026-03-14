@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "sita"
+version = "0.1.0"
+description = "SITA: Standardized Infrastructure for the Training of Adapters"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "AGPL-3.0-or-later"}
+
+dependencies = [
+    "torch>=2.0",
+    "transformers>=4.36",
+    "peft>=0.7",
+    "datasets>=2.14",
+    "pyyaml>=6.0",
+    "tqdm>=4.60",
+    "accelerate>=0.25",
+]
+
+[project.optional-dependencies]
+qlora = ["bitsandbytes>=0.41"]
+dev = ["pytest>=7.0", "ruff>=0.1"]
+all = ["sita[qlora,dev]"]
+
+[project.scripts]
+sita = "sita.runner:main"
+
+[tool.setuptools.packages.find]
+include = ["sita*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

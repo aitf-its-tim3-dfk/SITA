@@ -1,0 +1,57 @@
+# SITA Experiment Config — LoRA on a Vision-Language Model
+# Run: sita configs/lora_vlm.yaml
+#
+# Demonstrates that VLM integration follows the exact same pattern.
+# The only differences are:
+#   1. model.name = "hf_vlm" (loads model + processor instead of tokenizer)
+#   2. dataset loader should handle multimodal inputs
+#
+# Note: You'll need a VLM-aware dataset loader for real use.
+# This config uses hf_dataset as a placeholder.
+
+experiment_name: lora-vlm
+
+seed: 42
+
+model:
+  name: hf_vlm
+  pretrained: llava-hf/llava-1.5-7b-hf
+  kwargs:
+    auto_class: LlavaForConditionalGeneration
+    torch_dtype: float16
+    device_map: auto
+
+adapter:
+  name: lora
+  kwargs:
+    r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    target_modules:
+      - q_proj
+      - v_proj
+    # For VLMs you may want to target specific modules:
+    # modules_to_save: [embed_tokens, lm_head]
+
+dataset:
+  name: hf_dataset
+  kwargs:
+    path: your-org/your-vlm-dataset
+    text_field: text
+    max_length: 512
+
+training:
+  output_dir: ./output/lora-vlm
+  num_epochs: 1
+  batch_size: 2
+  learning_rate: 2e-4
+  gradient_accumulation_steps: 8
+  bf16: true
+  logging_steps: 10
+  save_steps: 200
+
+trainer:
+  name: hf_trainer
+
+evaluation:
+  name: loss

@@ -1,0 +1,58 @@
+# SITA Experiment Config — LoRA with Custom Training Loop
+# Run: sita configs/lora_custom_loop.yaml
+#
+# This example uses the custom_loop trainer instead of HF Trainer,
+# giving you full control over the optimization process.
+
+experiment_name: lora-custom-loop
+
+seed: 42
+
+model:
+  name: hf_causal_lm
+  pretrained: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+  kwargs:
+    torch_dtype: float16
+    device_map: auto
+
+adapter:
+  name: lora
+  kwargs:
+    r: 8
+    lora_alpha: 16
+    lora_dropout: 0.1
+    target_modules:
+      - q_proj
+      - v_proj
+    task_type: CAUSAL_LM
+
+dataset:
+  name: hf_dataset
+  kwargs:
+    path: tatsu-lab/alpaca
+    text_field: text
+    max_length: 512
+
+training:
+  output_dir: ./output/lora-custom-loop
+  num_epochs: 3
+  batch_size: 4
+  learning_rate: 1e-4
+  gradient_accumulation_steps: 4
+  bf16: true
+  max_grad_norm: 1.0
+  logging_steps: 10
+  save_steps: 500
+
+# custom_loop trainer with additional options
+trainer:
+  name: custom_loop
+  kwargs:
+    optimizer: adamw
+    scheduler: cosine
+    log_grad_norm: true
+
+evaluation:
+  name: loss
+  kwargs:
+    batch_size: 8

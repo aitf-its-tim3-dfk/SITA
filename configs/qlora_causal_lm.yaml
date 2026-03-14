@@ -1,0 +1,53 @@
+# SITA Experiment Config — QLoRA on Causal LM
+# Run: sita configs/qlora_causal_lm.yaml
+
+experiment_name: qlora-tinyllama
+
+seed: 42
+
+model:
+  name: hf_causal_lm
+  pretrained: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+  kwargs:
+    device_map: auto
+
+adapter:
+  name: qlora
+  kwargs:
+    r: 16
+    lora_alpha: 32
+    target_modules:
+      - q_proj
+      - v_proj
+      - k_proj
+      - o_proj
+    task_type: CAUSAL_LM
+    bnb_4bit_compute_dtype: bfloat16
+    bnb_4bit_quant_type: nf4
+    bnb_4bit_use_double_quant: true
+
+dataset:
+  name: hf_dataset
+  kwargs:
+    path: tatsu-lab/alpaca
+    text_field: text
+    max_length: 512
+
+training:
+  output_dir: ./output/qlora-tinyllama
+  num_epochs: 1
+  batch_size: 4
+  learning_rate: 2e-4
+  gradient_accumulation_steps: 4
+  bf16: true
+  logging_steps: 10
+  save_steps: 200
+  eval_steps: 200
+
+trainer:
+  name: hf_trainer
+
+evaluation:
+  name: loss
+  kwargs:
+    batch_size: 8
