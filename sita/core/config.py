@@ -80,7 +80,9 @@ class ExperimentConfig:
 
     experiment_name: str = "experiment"
     seed: int = 42
-    model: ModelConfig = field(default_factory=lambda: ModelConfig(name="", pretrained=""))
+    model: ModelConfig = field(
+        default_factory=lambda: ModelConfig(name="", pretrained="")
+    )
     adapter: AdapterConfig = field(default_factory=lambda: AdapterConfig(name=""))
     dataset: DatasetConfig = field(default_factory=lambda: DatasetConfig(name=""))
     training: TrainingConfig = field(default_factory=TrainingConfig)
@@ -107,9 +109,21 @@ def _dict_to_dataclass(cls, data: dict) -> Any:
         if k in field_names:
             field_type = resolved_hints.get(k)
             # resolve nested dataclasses
-            if isinstance(v, dict) and field_type is not None and hasattr(field_type, "__dataclass_fields__"):
+            if (
+                isinstance(v, dict)
+                and field_type is not None
+                and hasattr(field_type, "__dataclass_fields__")
+            ):
                 filtered[k] = _dict_to_dataclass(field_type, v)
             else:
+                # coerce primitive types so that e.g. "2e-4" to float works
+                if field_type in (float, int, bool, str) and not isinstance(
+                    v, field_type
+                ):
+                    try:
+                        v = field_type(v)
+                    except (ValueError, TypeError):
+                        pass
                 filtered[k] = v
     return cls(**filtered)
 
@@ -124,6 +138,8 @@ def load_config(path: str | Path) -> ExperimentConfig:
         raw = yaml.safe_load(f)
 
     if not isinstance(raw, dict):
-        raise ValueError(f"Expected a YAML mapping at top level, got {type(raw).__name__}")
+        raise ValueError(
+            f"Expected a YAML mapping at top level, got {type(raw).__name__}"
+        )
 
     return _dict_to_dataclass(ExperimentConfig, raw)
