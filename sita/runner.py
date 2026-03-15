@@ -72,6 +72,24 @@ def run_experiment(config: ExperimentConfig) -> dict:
     logger.info(f"═══ Experiment: {config.experiment_name} ═══")
     _set_seed(config.seed)
 
+    if config.reporting.wandb:
+        try:
+            import wandb
+        except ImportError:
+            logger.error("wandb is not installed. Please install with `pip install sita[wandb]`.")
+            sys.exit(1)
+            
+        from dataclasses import asdict
+        run_name = config.reporting.wandb_run_name or config.experiment_name
+        wandb.init(
+            project=config.reporting.wandb_project,
+            entity=config.reporting.wandb_entity,
+            name=run_name,
+            tags=config.reporting.wandb_tags,
+            config={"experiment": asdict(config)},
+            **config.reporting.wandb_kwargs,
+        )
+
     # 1. Load model
     logger.info(f"[1/5] Loading model: {config.model.name} ({config.model.pretrained})")
     model_loader = MODEL_REGISTRY.get(config.model.name)()
@@ -105,6 +123,7 @@ def run_experiment(config: ExperimentConfig) -> dict:
         train_dataset=train_ds,
         eval_dataset=eval_ds,
         config=config.training,
+        reporting=config.reporting,
         **config.trainer.kwargs,
     )
 
@@ -133,6 +152,11 @@ def run_experiment(config: ExperimentConfig) -> dict:
     # Save adapter
     adapter.save(model, str(output_dir / "adapter"))
     logger.info(f"   Adapter saved to {output_dir / 'adapter'}")
+
+    if config.reporting.wandb:
+        import wandb
+        wandb.log({f"eval/{k}": v for k, v in metrics.items()})
+        wandb.finish()
 
     return metrics
 

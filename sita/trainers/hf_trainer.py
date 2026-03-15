@@ -46,6 +46,9 @@ class HFTrainer(BaseTrainer):
         config: TrainingConfig,
         **kwargs,
     ) -> nn.Module:
+        reporting = kwargs.get("reporting")
+        report_to = "wandb" if reporting and reporting.wandb else "none"
+
         training_args = TrainingArguments(
             output_dir=config.output_dir,
             num_train_epochs=config.num_epochs,
@@ -63,7 +66,7 @@ class HFTrainer(BaseTrainer):
             weight_decay=config.weight_decay,
             max_grad_norm=config.max_grad_norm,
             save_total_limit=2,
-            report_to="none",
+            report_to=report_to,
             **config.extra,
         )
 

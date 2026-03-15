@@ -49,3 +49,8 @@ evaluation:
   name: loss
   kwargs:
     batch_size: 8
+
+# reporting:
+#   wandb: true
+#   wandb_project: my-sita-experiments
+#   wandb_tags: [lora, tinyllama]

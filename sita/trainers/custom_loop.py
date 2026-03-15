@@ -69,6 +69,9 @@ class CustomLoopTrainer(BaseTrainer):
         device = next(model.parameters()).device
         use_amp = config.fp16 or config.bf16
         amp_dtype = torch.bfloat16 if config.bf16 else torch.float16
+        
+        reporting = kwargs.get("reporting")
+        use_wandb = reporting is not None and reporting.wandb
 
         # Optimizer
         optimizer_name = kwargs.get("optimizer", "adamw")
@@ -183,7 +186,19 @@ class CustomLoopTrainer(BaseTrainer):
                 # Logging
                 if global_step % config.logging_steps == 0:
                     lr = optimizer.param_groups[0]["lr"]
-                    progress.set_postfix(loss=f"{loss.item():.4f}", lr=f"{lr:.2e}")
+                    _loss_val = loss.item() * config.gradient_accumulation_steps
+                    progress.set_postfix(loss=f"{_loss_val:.4f}", lr=f"{lr:.2e}")
+
+                    if use_wandb:
+                        import wandb
+                        metrics = {
+                            "train/loss": _loss_val,
+                            "train/learning_rate": lr,
+                            "train/epoch": epoch + (step + 1) / len(dataloader),
+                        }
+                        if log_grad_norm and "total_norm" in locals():
+                            metrics["train/grad_norm"] = locals()["total_norm"]
+                        wandb.log(metrics, step=global_step)
 
                 # Checkpointing
                 if config.save_steps > 0 and global_step % config.save_steps == 0:

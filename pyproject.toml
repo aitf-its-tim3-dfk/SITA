@@ -22,8 +22,9 @@ dependencies = [
 
 [project.optional-dependencies]
 qlora = ["bitsandbytes>=0.41"]
+wandb = ["wandb>=0.15"]
 dev = ["pytest>=7.0", "ruff>=0.1"]
-all = ["sita[qlora,dev]"]
+all = ["sita[qlora,wandb,dev]"]
 
 [project.scripts]
 sita = "sita.runner:main"

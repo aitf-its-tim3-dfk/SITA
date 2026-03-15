@@ -59,6 +59,18 @@ class TrainingConfig:
 
 
 @dataclass
+class ReportingConfig:
+    """Configuration for experiment reporting/logging."""
+
+    wandb: bool = False
+    wandb_project: str = "sita"
+    wandb_entity: str | None = None
+    wandb_run_name: str | None = None
+    wandb_tags: list[str] = field(default_factory=list)
+    wandb_kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class EvalConfig:
     """Configuration for evaluation."""
 
@@ -88,6 +100,7 @@ class ExperimentConfig:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     evaluation: EvalConfig = field(default_factory=EvalConfig)
     trainer: TrainerConfig = field(default_factory=TrainerConfig)
+    reporting: ReportingConfig = field(default_factory=ReportingConfig)
 
 
 def _dict_to_dataclass(cls, data: dict) -> Any:
