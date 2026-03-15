@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import logging
+
 import torch
 from torch import nn
-from transformers import BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 
 from sita.core.base_adapter import BaseAdapter
 from sita.core.config import AdapterConfig
 from sita.core.registry import ADAPTER_REGISTRY
+
+logger = logging.getLogger(__name__)
 
 
 @ADAPTER_REGISTRY.register("qlora")
@@ -17,8 +21,8 @@ class QLoRAAdapter(BaseAdapter):
     """QLoRA: 4-bit quantized base model + LoRA adapters.
 
     This adapter is special because it also affects how the *model* is loaded.
-    When the model loader doesn't handle quantization itself, QLoRA re-quantizes
-    the model in `apply()`.
+    When the model loader doesn't handle quantization itself, QLoRA reloads
+    the model with 4-bit quantization in `apply()`.
 
     Tip: For cleaner separation, you can also load the model with
     quantization in the model loader via kwargs and use plain `lora` adapter.
@@ -57,9 +61,21 @@ class QLoRAAdapter(BaseAdapter):
             bnb_4bit_use_double_quant=use_double_quant,
         )
 
-        # re-quantize model if not already quantized
+        # Reload model with 4-bit quantization if not already quantized.
+        # bitsandbytes quantization must be applied at load time via
+        # `from_pretrained(quantization_config=...)`, not post-hoc.
         if not getattr(model, "is_quantized", False):
-            model.quantize(bnb_config)
+            model_name_or_path = model.config._name_or_path
+            logger.info(
+                f"Reloading model '{model_name_or_path}' with 4-bit quantization"
+            )
+            del model  # free memory before reloading
+            torch.cuda.empty_cache()
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name_or_path,
+                quantization_config=bnb_config,
+                device_map="auto",
+            )
 
         model = prepare_model_for_kbit_training(model)
 
