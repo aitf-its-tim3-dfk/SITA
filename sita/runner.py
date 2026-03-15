@@ -146,6 +146,8 @@ def main():
     )
     parser.add_argument(
         "config",
+        nargs="?",
+        default=None,
         type=str,
         help="Path to experiment YAML config file",
     )
@@ -181,6 +183,9 @@ def main():
         print(f"  Evaluators: {EVALUATOR_REGISTRY.list()}")
         print(f"  Trainers:   {TRAINER_REGISTRY.list()}")
         sys.exit(0)
+
+    if args.config is None:
+        parser.error("the following arguments are required: config")
 
     config = load_config(args.config)
     run_experiment(config)
