@@ -29,10 +29,10 @@ Every component registers itself via a decorator, so adding a new adapter is one
 
 ```bash
 # Install directly from GitHub
-pip install "sita[all] @ git+https://github.com/<your-username>/SITA.git"
+pip install "sita[all] @ git+https://github.com/aitf-its-tim3-dfk/SITA.git"
 
 # OR clone and install from source
-git clone https://github.com/<your-username>/SITA.git
+git clone https://github.com/aitf-its-tim3-dfk/SITA.git
 cd SITA
 pip install -e ".[all]"
 
@@ -116,6 +116,7 @@ class MyTrainer(BaseTrainer):
 ## **Example Notebooks**
 
 For an interactive tutorial on setting up and running experiments with SITA, check out our getting started notebook:
+
 - [`examples/getting_started.ipynb`](examples/getting_started.ipynb)
 
 ## **Example Configs**
