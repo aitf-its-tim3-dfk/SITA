@@ -28,7 +28,12 @@ Every component registers itself via a decorator, so adding a new adapter is one
 ## Quick Start
 
 ```bash
-# Install
+# Install directly from GitHub
+pip install "sita[all] @ git+https://github.com/<your-username>/SITA.git"
+
+# OR clone and install from source
+git clone https://github.com/<your-username>/SITA.git
+cd SITA
 pip install -e ".[all]"
 
 # Run an experiment
