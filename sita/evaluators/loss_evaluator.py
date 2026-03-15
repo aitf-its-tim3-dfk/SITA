@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from sita.core.base_evaluator import BaseEvaluator
 from sita.core.registry import EVALUATOR_REGISTRY
+from transformers import default_data_collator
 
 
 @EVALUATOR_REGISTRY.register("loss")
@@ -37,7 +38,9 @@ class LossEvaluator(BaseEvaluator):
         model.eval()
         device = next(model.parameters()).device
 
-        dataloader = DataLoader(dataset, batch_size=batch_size)
+        dataloader = DataLoader(
+            dataset, batch_size=batch_size, collate_fn=default_data_collator
+        )
 
         total_loss = 0.0
         total_steps = 0
