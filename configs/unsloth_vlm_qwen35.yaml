@@ -1,0 +1,66 @@
+# SITA Experiment Config — Unsloth VLM LoRA on Qwen3.5-0.8B
+# Run: sita configs/unsloth_vlm_qwen35.yaml
+#
+# Fine-tunes Qwen3.5-0.8B as a VLM for social media content analysis.
+# Only backprops on assistant output tokens (label + analysis).
+
+experiment_name: unsloth-vlm-qwen35-0.8b
+
+seed: 3407
+
+model:
+  name: unsloth_vlm
+  pretrained: unsloth/Qwen3.5-0.8B
+  kwargs:
+    max_seq_length: 2048
+    load_in_4bit: true
+
+adapter:
+  name: unsloth_vlm_lora
+  kwargs:
+    finetune_vision_layers: true
+    finetune_language_layers: true
+    finetune_attention_modules: true
+    finetune_mlp_modules: true
+    r: 16
+    lora_alpha: 16
+    lora_dropout: 0
+    bias: "none"
+    target_modules: "all-linear"
+    use_gradient_checkpointing: "unsloth"
+    random_state: 3407
+
+dataset:
+  name: dfk_vlm_dataset_v1
+  kwargs:
+    data_dir: samples/dataset
+    csv_file: metadata-updt.csv
+    train_ratio: 0.9
+
+training:
+  output_dir: ./output/unsloth-vlm-qwen35
+  num_epochs: 1
+  batch_size: 1
+  learning_rate: 2e-4
+  gradient_accumulation_steps: 4
+  bf16: true
+  logging_steps: 1
+  save_steps: 100
+  eval_steps: 50
+  warmup_ratio: 0.05
+  extra:
+    seed: 3407
+    max_steps: 200
+
+trainer:
+  name: unsloth_vlm_sft
+  kwargs:
+    train_on_responses_only: true
+    instruction_part: "<|im_start|>user\n"
+    response_part: "<|im_start|>assistant\n"
+    optim: adamw_8bit
+
+evaluation:
+  name: loss
+  kwargs:
+    batch_size: 1
