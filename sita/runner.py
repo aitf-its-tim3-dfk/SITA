@@ -6,14 +6,14 @@ Usage:
     python -m sita.runner configs/lora_causal_lm.yaml
 """
 
+from __future__ import annotations
+
 # Unsloth must be imported before transformers/peft to apply optimizations.
 # This is a no-op if unsloth is not installed.
 try:
     import unsloth  # noqa: F401
 except ImportError:
     pass
-
-from __future__ import annotations
 
 import argparse
 import importlib
