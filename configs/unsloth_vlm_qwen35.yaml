@@ -14,7 +14,7 @@ model:
   kwargs:
     max_seq_length: 2048
     load_in_4bit: false
-    dtype: "bfloat16"
+    dtype: "float32"
 
 adapter:
   name: unsloth_vlm_lora
@@ -51,7 +51,8 @@ training:
   extra:
     seed: 3407
     max_steps: 200
-    bf16: true
+    bf16: false
+    fp16: false
 
 trainer:
   name: unsloth_vlm_sft
