@@ -89,8 +89,8 @@ class UnslothVLMSFTTrainer(BaseTrainer):
                 torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False
             )
 
-        use_bf16 = bf16_supported
-        use_fp16 = not bf16_supported
+        use_bf16 = config.extra.pop("bf16", bf16_supported)
+        use_fp16 = config.extra.pop("fp16", not use_bf16)
 
         # Build SFTConfig from training config
         sft_config = SFTConfig(
