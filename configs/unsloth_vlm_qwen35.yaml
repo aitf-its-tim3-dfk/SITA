@@ -43,7 +43,10 @@ training:
   batch_size: 1
   learning_rate: 2e-4
   gradient_accumulation_steps: 4
-  fp16: true
+  # Let Unsloth manage precision,it auto-selects based on GPU
+  # (float32 on T4, bfloat16 on Ampere+)
+  fp16: false
+  bf16: false
   logging_steps: 1
   save_steps: 100
   eval_steps: 50
