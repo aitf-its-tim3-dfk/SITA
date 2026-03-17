@@ -1,0 +1,52 @@
+# SITA Experiment Config — Unsloth LoRA on Causal LM
+# Run: sita configs/unsloth_lora_causal_lm.yaml
+
+experiment_name: unsloth-lora-tinyllama
+
+seed: 3407
+
+model:
+  name: unsloth_causal_lm
+  pretrained: unsloth/tinyllama
+  kwargs:
+    max_seq_length: 2048
+    dtype: "None" # Using string "None" to let Unsloth auto-detect or process logic handles it
+    load_in_4bit: true
+
+adapter:
+  name: unsloth_lora
+  kwargs:
+    r: 16
+    target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    lora_alpha: 16
+    lora_dropout: 0
+    bias: "none"
+    use_gradient_checkpointing: "unsloth"
+    random_state: 3407
+
+dataset:
+  name: hf_dataset
+  kwargs:
+    path: tatsu-lab/alpaca
+    text_field: text
+    max_length: 512
+
+training:
+  output_dir: ./output/unsloth-lora-tinyllama
+  num_epochs: 1
+  batch_size: 2
+  learning_rate: 2e-4
+  gradient_accumulation_steps: 4
+  fp16: true
+  logging_steps: 1
+  save_steps: 200
+  eval_steps: 200
+  warmup_ratio: 0.03
+
+trainer:
+  name: hf_trainer
+  
+evaluation:
+  name: loss
+  kwargs:
+    batch_size: 4
