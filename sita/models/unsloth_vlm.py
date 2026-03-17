@@ -41,12 +41,8 @@ class UnslothVLMLoader(BaseModelLoader):
 
         kwargs = dict(config.kwargs)
 
-        # handle string dtype specs like "float16", "bfloat16", "None"
-        if "dtype" in kwargs and isinstance(kwargs["dtype"], str):
-            if kwargs["dtype"] == "None":
-                kwargs["dtype"] = None
-            else:
-                kwargs["dtype"] = getattr(torch, kwargs["dtype"])
+        if "dtype" in kwargs and kwargs["dtype"] in ("None", None):
+            kwargs.pop("dtype", None)
 
         model, tokenizer = FastVisionModel.from_pretrained(
             model_name=config.pretrained,

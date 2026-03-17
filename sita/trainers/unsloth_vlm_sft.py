@@ -82,19 +82,8 @@ class UnslothVLMSFTTrainer(BaseTrainer):
                 config.warmup_ratio * config.extra.get("max_steps", 100)
             )
 
-        try:
-            from unsloth import is_bfloat16_supported
-
-            bf16_supported = is_bfloat16_supported()
-        except ImportError:
-            import torch
-
-            bf16_supported = (
-                torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False
-            )
-
-        use_bf16 = config.extra.pop("bf16", bf16_supported)
-        use_fp16 = config.extra.pop("fp16", not use_bf16)
+        use_bf16 = config.extra.pop("bf16", None)
+        use_fp16 = config.extra.pop("fp16", None)
 
         # Build SFTConfig from training config
         sft_config = SFTConfig(
@@ -104,8 +93,8 @@ class UnslothVLMSFTTrainer(BaseTrainer):
             per_device_eval_batch_size=config.batch_size,
             learning_rate=config.learning_rate,
             gradient_accumulation_steps=config.gradient_accumulation_steps,
-            fp16=use_fp16,
-            bf16=use_bf16,
+            fp16=use_fp16 if use_fp16 is not None else not torch.cuda.is_bf16_supported(),
+            bf16=use_bf16 if use_bf16 is not None else torch.cuda.is_bf16_supported(),
             logging_steps=config.logging_steps,
             save_steps=config.save_steps,
             eval_steps=config.eval_steps if eval_dataset else None,
