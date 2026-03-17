@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from torch import nn
+import torch
 
 from sita.core.base_trainer import BaseTrainer
 from sita.core.config import TrainingConfig
@@ -93,7 +94,9 @@ class UnslothVLMSFTTrainer(BaseTrainer):
             per_device_eval_batch_size=config.batch_size,
             learning_rate=config.learning_rate,
             gradient_accumulation_steps=config.gradient_accumulation_steps,
-            fp16=use_fp16 if use_fp16 is not None else not torch.cuda.is_bf16_supported(),
+            fp16=(
+                use_fp16 if use_fp16 is not None else not torch.cuda.is_bf16_supported()
+            ),
             bf16=use_bf16 if use_bf16 is not None else torch.cuda.is_bf16_supported(),
             logging_steps=config.logging_steps,
             save_steps=config.save_steps,
