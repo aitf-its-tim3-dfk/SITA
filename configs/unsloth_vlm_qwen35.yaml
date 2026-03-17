@@ -13,7 +13,7 @@ model:
   pretrained: unsloth/Qwen3.5-0.8B
   kwargs:
     max_seq_length: 2048
-    load_in_4bit: true
+    load_in_4bit: false
 
 adapter:
   name: unsloth_vlm_lora
@@ -40,13 +40,13 @@ dataset:
 training:
   output_dir: ./output/unsloth-vlm-qwen35
   num_epochs: 1
-  batch_size: 1
+  batch_size: 2
   learning_rate: 2e-4
   gradient_accumulation_steps: 4
   logging_steps: 1
   save_steps: 100
   eval_steps: 50
-  warmup_steps: 10
+  warmup_steps: 5
   extra:
     seed: 3407
     max_steps: 200
