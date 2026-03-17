@@ -51,10 +51,14 @@ class UnslothVLMSFTTrainer(BaseTrainer):
         try:
             from trl import SFTTrainer, SFTConfig
             from unsloth.trainer import UnslothVisionDataCollator
+            from unsloth import FastVisionModel
         except ImportError as e:
             raise ImportError(
                 f"Missing dependency: {e}. " "Please install: pip install unsloth trl"
             )
+
+        # Apply Unsloth's performance patches and memory optimizations for VLM fine-tuning
+        FastVisionModel.for_training(model)
 
         # Extract trainer-specific kwargs
         trainer_kwargs = kwargs.copy()
