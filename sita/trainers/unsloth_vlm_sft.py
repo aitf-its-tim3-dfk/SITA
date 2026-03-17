@@ -53,8 +53,7 @@ class UnslothVLMSFTTrainer(BaseTrainer):
             from unsloth.trainer import UnslothVisionDataCollator
         except ImportError as e:
             raise ImportError(
-                f"Missing dependency: {e}. "
-                "Please install: pip install unsloth trl"
+                f"Missing dependency: {e}. " "Please install: pip install unsloth trl"
             )
 
         # Extract trainer-specific kwargs
@@ -68,6 +67,16 @@ class UnslothVLMSFTTrainer(BaseTrainer):
         optim = trainer_kwargs.pop("optim", "adamw_8bit")
 
         report_to = "wandb" if reporting and reporting.wandb else "none"
+
+        # Build warmup config w/ prefer warmup_steps over deprecated warmup_ratio
+        warmup_steps = config.extra.pop("warmup_steps", None)
+        warmup_kwargs = {}
+        if warmup_steps is not None:
+            warmup_kwargs["warmup_steps"] = int(warmup_steps)
+        else:
+            warmup_kwargs["warmup_steps"] = int(
+                config.warmup_ratio * config.extra.get("max_steps", 100)
+            )
 
         # Build SFTConfig from training config
         sft_config = SFTConfig(
@@ -83,18 +92,18 @@ class UnslothVLMSFTTrainer(BaseTrainer):
             save_steps=config.save_steps,
             eval_steps=config.eval_steps if eval_dataset else None,
             eval_strategy="steps" if eval_dataset else "no",
-            warmup_ratio=config.warmup_ratio,
+            **warmup_kwargs,
             weight_decay=config.weight_decay,
             max_grad_norm=config.max_grad_norm,
             optim=optim,
             save_total_limit=2,
-            seed=config.extra.get("seed", 3407),
+            seed=config.extra.pop("seed", 3407),
             report_to=report_to,
             # Vision SFT specific — let the data collator handle seq length
             dataset_text_field="",
             dataset_kwargs={"skip_prepare_dataset": True},
             remove_unused_columns=False,
-            **{k: v for k, v in config.extra.items() if k != "seed"},
+            **{k: v for k, v in config.extra.items()},
         )
 
         # Build data collator with response-only masking
