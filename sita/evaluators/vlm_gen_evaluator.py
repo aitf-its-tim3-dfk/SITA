@@ -248,7 +248,9 @@ class VLMGenEvaluator(BaseEvaluator):
             list(pred_filtered),
             list(gt_filtered),
             model_type=model_name,
-            verbose=False,
+            device="cpu",
+            batch_size=32,
+            verbose=True,
         )
 
         return {
