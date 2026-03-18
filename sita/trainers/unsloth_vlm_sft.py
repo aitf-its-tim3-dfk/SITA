@@ -113,6 +113,7 @@ class UnslothVLMSFTTrainer(BaseTrainer):
             dataset_text_field="",
             dataset_kwargs={"skip_prepare_dataset": True},
             remove_unused_columns=False,
+            max_length=2048,
             **{k: v for k, v in config.extra.items()},
         )
 
