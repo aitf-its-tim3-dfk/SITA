@@ -49,7 +49,6 @@ training:
   extra:
     seed: 3407
     max_length: 2048
-    num_train_epochs: 1
 
 trainer:
   name: unsloth_vlm_sft
@@ -60,6 +59,8 @@ trainer:
     optim: adamw_8bit
 
 evaluation:
-  name: loss
+  name: vlm_gen
   kwargs:
-    batch_size: 1
+    max_new_tokens: 512
+    temperature: 0.0
+    bert_model: indolem/indobert-base-uncased
