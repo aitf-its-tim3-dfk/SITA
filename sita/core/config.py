@@ -55,6 +55,7 @@ class TrainingConfig:
     warmup_ratio: float = 0.03
     weight_decay: float = 0.0
     max_grad_norm: float = 1.0
+    max_length: int = 2048
     extra: dict[str, Any] = field(default_factory=dict)
 
 
