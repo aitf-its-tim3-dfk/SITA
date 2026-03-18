@@ -46,10 +46,10 @@ training:
   save_steps: 100
   eval_steps: 50
   warmup_steps: 5
-  max_length: 2048
   extra:
     seed: 3407
-    max_steps: 200
+    max_length: 2048
+    num_train_epochs: 1
 
 trainer:
   name: unsloth_vlm_sft
