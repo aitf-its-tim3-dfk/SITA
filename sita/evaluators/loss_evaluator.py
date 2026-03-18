@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import torch
@@ -12,6 +13,17 @@ from tqdm import tqdm
 from sita.core.base_evaluator import BaseEvaluator
 from sita.core.registry import EVALUATOR_REGISTRY
 from transformers import default_data_collator
+
+logger = logging.getLogger("sita.evaluators.loss_evaluator")
+
+
+def _is_conversation_format(dataset: Any) -> bool:
+    """Detect VLM conversation-style datasets (list of dicts w/ 'messages')."""
+    if isinstance(dataset, list) and len(dataset) > 0:
+        first = dataset[0]
+        if isinstance(first, dict) and "messages" in first:
+            return True
+    return False
 
 
 @EVALUATOR_REGISTRY.register("loss")
@@ -33,6 +45,15 @@ class LossEvaluator(BaseEvaluator):
         dataset: Any,
         **kwargs,
     ) -> dict[str, float]:
+        # VLM conversation datasets can't be collated with default_data_collator.
+        # SFTTrainer already runs eval during training, so we skip here.
+        if _is_conversation_format(dataset):
+            logger.warning(
+                "Dataset is in VLM conversation format — skipping standalone "
+                "evaluation (SFTTrainer already evaluated during training)."
+            )
+            return {"eval_loss": float("nan"), "perplexity": float("nan")}
+
         batch_size = kwargs.get("batch_size", 8)
 
         model.eval()
