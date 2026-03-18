@@ -105,6 +105,7 @@ class UnslothVLMSFTTrainer(BaseTrainer):
             **warmup_kwargs,
             weight_decay=config.weight_decay,
             max_grad_norm=config.max_grad_norm,
+            max_length=config.max_length,
             optim=optim,
             save_total_limit=2,
             seed=config.extra.pop("seed", 3407),
@@ -113,7 +114,6 @@ class UnslothVLMSFTTrainer(BaseTrainer):
             dataset_text_field="",
             dataset_kwargs={"skip_prepare_dataset": True},
             remove_unused_columns=False,
-            max_length=2048,
             **{k: v for k, v in config.extra.items()},
         )
 
