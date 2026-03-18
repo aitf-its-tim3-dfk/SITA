@@ -55,6 +55,18 @@ def _build_user_messages(sample: dict) -> list[dict]:
     return [m for m in sample.get("messages", []) if m.get("role") != "assistant"]
 
 
+def _extract_images(sample: dict) -> list:
+    """Pull all PIL images from the user turn(s) of a conversation dict."""
+    images = []
+    for msg in sample.get("messages", []):
+        if msg.get("role") != "user":
+            continue
+        for part in msg.get("content", []):
+            if part.get("type") == "image" and "image" in part:
+                images.append(part["image"])
+    return images
+
+
 # ---------------------------------------------------------------------------
 # Evaluator
 # ---------------------------------------------------------------------------
@@ -111,6 +123,7 @@ class VLMGenEvaluator(BaseEvaluator):
 
             # Build input — user turn only
             user_msgs = _build_user_messages(sample)
+            images = _extract_images(sample)
 
             input_text = tokenizer.apply_chat_template(
                 user_msgs,
@@ -118,12 +131,16 @@ class VLMGenEvaluator(BaseEvaluator):
                 tokenize=False,
             )
 
-            # Tokenize with image processing
-            inputs = tokenizer(
-                input_text,
-                return_tensors="pt",
-                padding=True,
-            ).to(device)
+            # Tokenize with image processing — pass images to the processor
+            proc_kwargs: dict[str, Any] = {
+                "text": input_text,
+                "return_tensors": "pt",
+                "padding": True,
+            }
+            if images:
+                proc_kwargs["images"] = images
+
+            inputs = tokenizer(**proc_kwargs).to(device)
 
             # Generate
             gen_kwargs: dict[str, Any] = {
