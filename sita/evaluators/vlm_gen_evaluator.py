@@ -100,6 +100,7 @@ class VLMGenEvaluator(BaseEvaluator):
         # Switch model to inference mode (Unsloth optimization)
         try:
             from unsloth import FastVisionModel
+
             FastVisionModel.for_inference(model)
             logger.info("Switched model to Unsloth inference mode.")
         except ImportError:
@@ -190,16 +191,16 @@ class VLMGenEvaluator(BaseEvaluator):
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _compute_classification(
-        gt: list[str], pred: list[str]
-    ) -> dict[str, float]:
+    def _compute_classification(gt: list[str], pred: list[str]) -> dict[str, float]:
         try:
             from sklearn.metrics import (
                 accuracy_score,
                 precision_recall_fscore_support,
             )
         except ImportError:
-            logger.warning("scikit-learn not installed — skipping classification metrics.")
+            logger.warning(
+                "scikit-learn not installed — skipping classification metrics."
+            )
             return {}
 
         acc = accuracy_score(gt, pred)
@@ -248,8 +249,6 @@ class VLMGenEvaluator(BaseEvaluator):
             list(pred_filtered),
             list(gt_filtered),
             model_type=model_name,
-            device="cpu",
-            batch_size=32,
             verbose=True,
         )
 
