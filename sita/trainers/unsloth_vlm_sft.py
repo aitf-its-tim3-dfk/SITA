@@ -105,7 +105,6 @@ class UnslothVLMSFTTrainer(BaseTrainer):
             **warmup_kwargs,
             weight_decay=config.weight_decay,
             max_grad_norm=config.max_grad_norm,
-            max_length=config.max_length,
             optim=optim,
             save_total_limit=2,
             seed=config.extra.pop("seed", 3407),
