@@ -83,7 +83,7 @@ class VLMGenEvaluator(BaseEvaluator):
           kwargs:
             max_new_tokens: 512
             temperature: 0.0
-            bert_model: indolem/indobert-base-uncased
+            bert_model: bert-base-multilingual-cased
     """
 
     def evaluate(
@@ -95,7 +95,7 @@ class VLMGenEvaluator(BaseEvaluator):
     ) -> dict[str, float]:
         max_new_tokens = int(kwargs.get("max_new_tokens", 512))
         temperature = float(kwargs.get("temperature", 0.0))
-        bert_model_name = kwargs.get("bert_model", "indolem/indobert-base-uncased")
+        bert_model_name = kwargs.get("bert_model", "bert-base-multilingual-cased")
 
         # Switch model to inference mode (Unsloth optimization)
         try:

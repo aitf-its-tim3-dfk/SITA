@@ -63,4 +63,4 @@ evaluation:
   kwargs:
     max_new_tokens: 512
     temperature: 0.0
-    bert_model: indolem/indobert-base-uncased
+    bert_model: bert-base-multilingual-cased
