@@ -62,6 +62,7 @@ class UnslothVLMRFTTrainer(BaseTrainer):
         
         train_on_responses_only = trainer_kwargs.pop("train_on_responses_only", True)
         instruction_part = trainer_kwargs.pop("instruction_part", "<|im_start|>user\n")
+        response_part = trainer_kwargs.pop("response_part", "<|im_start|>assistant\n")
         validator_name = trainer_kwargs.pop("validator", "dfk_vlm_validator")
         validator_kwargs = trainer_kwargs.pop("validator_kwargs", {})
         
