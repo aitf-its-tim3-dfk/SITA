@@ -124,25 +124,22 @@ class UnslothVLMRFTTrainer(BaseTrainer):
                 model.eval()
                 
                 with torch.no_grad():
+                    prompts_text = []
+                    images_list = []
+                    gt_texts = []
+                    user_msgs = []
+                    
                     for example in batch:
                         messages = example["messages"]
-                        user_msg = None
-                        assistant_msg = None
+                        user_msg = next((m for m in messages if m["role"] == "user"), None)
+                        assistant_msg = next((m for m in messages if m["role"] == "assistant"), None)
                         
-                        for m in messages:
-                            if m["role"] == "user":
-                                user_msg = m
-                            elif m["role"] == "assistant":
-                                assistant_msg = m
-                                
                         if not user_msg or not assistant_msg:
                             continue
                             
                         # Extract Ground Truth Texts
-                        gt_text = ""
-                        for c in assistant_msg["content"]:
-                            if c["type"] == "text":
-                                gt_text += c["text"]
+                        gt_text = "".join([c["text"] for c in assistant_msg["content"] if c["type"] == "text"])
+                        if not gt_text: continue
                         
                         # Extract Target image
                         images = [c["image"] for c in user_msg["content"] if c["type"] == "image"]
@@ -153,25 +150,45 @@ class UnslothVLMRFTTrainer(BaseTrainer):
                         # Add `<think>\n` to encourage reasoning if requested
                         prompt_text += "<think>\n"
                         
-                        inputs = tokenizer(text=prompt_text, images=images, return_tensors="pt").to(device)
-                        input_len = inputs.input_ids.shape[1]
+                        prompts_text.append(prompt_text)
+                        images_list.append(images)
+                        gt_texts.append(gt_text)
+                        user_msgs.append(user_msg)
+                        
+                    if not prompts_text:
+                        continue
+                        
+                    if tokenizer.pad_token_id is None:
+                        tokenizer.pad_token_id = tokenizer.eos_token_id
+                    tokenizer.padding_side = "left"
+                    
+                    # Batch encode
+                    inputs = tokenizer(text=prompts_text, images=images_list, return_tensors="pt", padding=True).to(device)
+                    input_len = inputs.input_ids.shape[1]
 
-                        # Generate Multiple Samples
-                        # Batch generate by duplicating input
-                        inputs = {k: v.repeat(num_samples, *([1]*(v.ndim-1))) for k, v in inputs.items()}
+                    # Generate Multiple Samples
+                    # Repeat interleave to expand [A, B] -> [A, A, B, B] (for num_samples=2)
+                    inputs = {k: v.repeat_interleave(num_samples, dim=0) for k, v in inputs.items()}
+                    
+                    with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
+                        outputs = model.generate(
+                            **inputs, 
+                            max_new_tokens=max_new_tokens,
+                            do_sample=True,
+                            temperature=temperature,
+                            pad_token_id=tokenizer.eos_token_id,
+                        )
+                    
+                    tokenizer.padding_side = "right" # Restore for DataCollator
+                    
+                    # Check Validity
+                    for i in range(len(prompts_text)):
+                        gt_text = gt_texts[i]
+                        user_msg = user_msgs[i]
                         
-                        with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
-                            outputs = model.generate(
-                                **inputs, 
-                                max_new_tokens=max_new_tokens,
-                                do_sample=True,
-                                temperature=temperature,
-                                pad_token_id=tokenizer.eos_token_id,
-                            )
-                        
-                        # Check Validity
-                        for sample_idx in range(num_samples):
-                            gen_ids = outputs[sample_idx][input_len:]
+                        for s in range(num_samples):
+                            idx = i * num_samples + s
+                            gen_ids = outputs[idx][input_len:]
                             gen_text = tokenizer.decode(gen_ids, skip_special_tokens=True)
                             
                             # Prefix reconstructed `<think>\n`
