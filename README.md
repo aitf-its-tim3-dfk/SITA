@@ -13,12 +13,12 @@ To allow for a more transparent and reproducible comparison of PEFT methods, we 
 ```
 Experiment YAML ──▶ Runner (CLI)
                            │
-       ┌───────────────────┼───────────────────┬───────────────────┐
-       ▼                   ▼                   ▼                   ▼
-MODEL_REGISTRY     ADAPTER_REGISTRY    DATASET_REGISTRY   EVALUATOR_REGISTRY
-       │                   │                   │                   │
- hf_causal_lm        lora                hf_dataset          loss
- hf_vlm              qlora                                   (custom)
+       ┌───────────────────┼───────────────────┬───────────────────┬───────────────────┐
+       ▼                   ▼                   ▼                   ▼                   ▼
+MODEL_REGISTRY     ADAPTER_REGISTRY    DATASET_REGISTRY   EVALUATOR_REGISTRY   VALIDATOR_REGISTRY
+       │                   │                   │                   │                   │
+ hf_causal_lm        lora                hf_dataset          loss                dfk_vlm_validator
+ hf_vlm              qlora                                   (custom)            (custom)
  (custom)            prefix_tuning
                      (custom)
 ```
@@ -100,6 +100,7 @@ Two built-in trainers:
 | ----------- | ------------- | ------------------------------ |
 | HF Trainer  | `hf_trainer`  | Default, batteries-included    |
 | Custom Loop | `custom_loop` | Full control over optimization |
+| RFT VLM     | `unsloth_vlm_rft_trainer` | Rejection Sampling Generation+SFT for VLMs |
 
 The custom loop supports configurable optimizer, scheduler, gradient norm logging, and AMP. See `configs/lora_custom_loop.yaml` for an example.
 
@@ -127,6 +128,8 @@ For an interactive tutorial on setting up and running experiments with SITA, che
 | `configs/qlora_causal_lm.yaml`  | QLoRA (4-bit) on TinyLlama        |
 | `configs/lora_custom_loop.yaml` | LoRA with custom training loop    |
 | `configs/lora_vlm.yaml`         | LoRA on a VLM (LLaVA)             |
+| `configs/unsloth_vlm_qwen35.yaml`| Unsloth VLM SFT on Qwen3.5 0.8B  |
+| `configs/unsloth_rft_vlm_qwen35.yaml`| Unsloth VLM with Rejection Sampling (RFT) |
 
 ## **Project Structure**
 
@@ -153,7 +156,10 @@ sita/
 │   └── loss_evaluator.py
 ├── trainers/               # Built-in training loops
 │   ├── hf_trainer.py       # HuggingFace Trainer wrapper
-│   └── custom_loop.py      # Bare PyTorch loop
+│   ├── custom_loop.py      # Bare PyTorch loop
+│   └── rejection_sampling_vlm.py # RFT Trainer for VLMs
+├── validators/             # Validation logic for RFT
+│   └── dfk_validator.py    # DFK structural/semantic validator
 ├── runner.py               # CLI entrypoint
 configs/                    # Example experiment configs
 ```

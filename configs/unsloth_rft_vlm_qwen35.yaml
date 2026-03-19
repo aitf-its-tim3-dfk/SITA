@@ -1,0 +1,72 @@
+# SITA Experiment Config — Unsloth VLM LoRA on Qwen3.5-0.8B with RFT
+# Run: sita configs/unsloth_rft_vlm_qwen35.yaml
+#
+# Fine-tunes Qwen3.5-0.8B as a VLM using online Rejection Sampling (RFT).
+# It will sample reasoning traces, compute semantic+structural validation,
+# and only backpropagate on the traces that produce the correct answer.
+
+experiment_name: unsloth-rft-vlm-qwen35-0.8b
+
+seed: 3407
+
+model:
+  name: unsloth_vlm
+  pretrained: unsloth/Qwen3.5-0.8B
+  kwargs:
+    load_in_4bit: false
+
+adapter:
+  name: unsloth_vlm_lora
+  kwargs:
+    finetune_vision_layers: true
+    finetune_language_layers: true
+    finetune_attention_modules: true
+    finetune_mlp_modules: true
+    r: 16
+    lora_alpha: 16
+    lora_dropout: 0
+    bias: "none"
+    target_modules: "all-linear"
+    use_gradient_checkpointing: "unsloth"
+    random_state: 3407
+
+dataset:
+  name: dfk_vlm_dataset_v1
+  kwargs:
+    data_dir: samples/dataset
+    csv_file: metadata-updt.csv
+    train_ratio: 0.9
+
+training:
+  output_dir: ./output/unsloth-rft-vlm-qwen35
+  num_epochs: 1
+  batch_size: 4
+  learning_rate: 2e-4
+  gradient_accumulation_steps: 4
+  logging_steps: 1
+  save_steps: 100
+  eval_steps: 50
+  warmup_steps: 5
+  extra:
+    seed: 3407
+    max_length: 2048
+
+trainer:
+  name: unsloth_vlm_rft_trainer
+  kwargs:
+    train_on_responses_only: true
+    instruction_part: "<|im_start|>user\n"
+    response_part: "<|im_start|>assistant\n"
+    optim: adamw_8bit
+    num_samples: 4
+    max_new_tokens: 256
+    validator: dfk_vlm_validator
+    validator_kwargs:
+      semantic_threshold: 0.8
+
+evaluation:
+  name: vlm_gen
+  kwargs:
+    max_new_tokens: 512
+    temperature: 0.0
+    bert_model: bert-base-multilingual-cased
