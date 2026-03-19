@@ -40,9 +40,9 @@ dataset:
 training:
   output_dir: ./output/unsloth-rft-vlm-qwen35
   num_epochs: 1
-  batch_size: 4
+  batch_size: 16
   learning_rate: 2e-4
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 1
   logging_steps: 1
   save_steps: 100
   eval_steps: 50
