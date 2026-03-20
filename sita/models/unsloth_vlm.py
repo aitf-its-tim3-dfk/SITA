@@ -41,6 +41,8 @@ class UnslothVLMLoader(BaseModelLoader):
 
         kwargs = dict(config.kwargs)
 
+        chat_template = kwargs.pop("chat_template", None)
+
         if "dtype" in kwargs and kwargs["dtype"] in ("None", None):
             kwargs.pop("dtype", None)
 
@@ -48,5 +50,12 @@ class UnslothVLMLoader(BaseModelLoader):
             model_name=config.pretrained,
             **kwargs,
         )
+
+        if chat_template is not None:
+            from unsloth.chat_templates import get_chat_template
+            tokenizer = get_chat_template(
+                tokenizer,
+                chat_template=chat_template,
+            )
 
         return model, tokenizer
