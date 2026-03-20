@@ -96,6 +96,8 @@ class VLMGenEvaluator(BaseEvaluator):
         max_new_tokens = int(kwargs.get("max_new_tokens", 512))
         temperature = float(kwargs.get("temperature", 0.0))
         bert_model_name = kwargs.get("bert_model", "bert-base-multilingual-cased")
+        batch_size = int(kwargs.get("batch_size", 1))
+        num_workers = int(kwargs.get("num_workers", 0))
 
         # Switch model to inference mode (Unsloth optimization)
         try:
@@ -116,30 +118,54 @@ class VLMGenEvaluator(BaseEvaluator):
 
         logger.info(f"Running generation on {len(dataset)} samples…")
 
-        for sample in tqdm(dataset, desc="Generating"):
-            # Ground truth
-            gt_label, gt_analisis = _extract_ground_truth(sample)
-            if not gt_label:
+        from torch.utils.data import DataLoader
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            collate_fn=lambda x: x,
+        )
+
+        for batch in tqdm(dataloader, desc="Generating"):
+            texts = []
+            flat_images = []
+            valid_gts = []
+
+            for sample in batch:
+                gt_label, gt_analisis = _extract_ground_truth(sample)
+                if not gt_label:
+                    continue
+
+                # Build input — user turn only
+                user_msgs = _build_user_messages(sample)
+                images = _extract_images(sample)
+
+                input_text = tokenizer.apply_chat_template(
+                    user_msgs,
+                    add_generation_prompt=True,
+                    tokenize=False,
+                )
+
+                texts.append(input_text)
+                if images:
+                    flat_images.extend(images)
+                valid_gts.append((gt_label, gt_analisis))
+
+            if not texts:
                 continue
 
-            # Build input — user turn only
-            user_msgs = _build_user_messages(sample)
-            images = _extract_images(sample)
-
-            input_text = tokenizer.apply_chat_template(
-                user_msgs,
-                add_generation_prompt=True,
-                tokenize=False,
-            )
+            if hasattr(tokenizer, "padding_side") and tokenizer.padding_side != "left":
+                tokenizer.padding_side = "left"
 
             # Tokenize with image processing — pass images to the processor
             proc_kwargs: dict[str, Any] = {
-                "text": input_text,
+                "text": texts if batch_size > 1 else texts[0],
                 "return_tensors": "pt",
                 "padding": True,
             }
-            if images:
-                proc_kwargs["images"] = images
+            if flat_images:
+                proc_kwargs["images"] = flat_images
 
             inputs = tokenizer(**proc_kwargs).to(device)
 
@@ -159,17 +185,19 @@ class VLMGenEvaluator(BaseEvaluator):
 
             # Decode only the new tokens
             input_len = inputs["input_ids"].shape[-1]
-            generated = tokenizer.decode(
-                output_ids[0][input_len:],
+            generated_texts = tokenizer.batch_decode(
+                output_ids[:, input_len:],
                 skip_special_tokens=True,
-            ).strip()
+            )
 
-            pred_label, pred_analisis = _parse_response(generated)
+            for (gt_label, gt_analisis), generated in zip(valid_gts, generated_texts):
+                generated = generated.strip()
+                pred_label, pred_analisis = _parse_response(generated)
 
-            gt_labels.append(gt_label)
-            pred_labels.append(pred_label if pred_label else "<UNPARSED>")
-            gt_analyses.append(gt_analisis)
-            pred_analyses.append(pred_analisis if pred_analisis else generated)
+                gt_labels.append(gt_label)
+                pred_labels.append(pred_label if pred_label else "<UNPARSED>")
+                gt_analyses.append(gt_analisis)
+                pred_analyses.append(pred_analisis if pred_analisis else generated)
 
         if not gt_labels:
             logger.warning("No valid samples found for evaluation.")
