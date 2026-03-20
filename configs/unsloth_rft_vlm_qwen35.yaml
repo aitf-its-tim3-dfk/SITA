@@ -63,6 +63,7 @@ trainer:
     validator: dfk_vlm_validator
     validator_kwargs:
       semantic_threshold: 0.8
+      label_only: true
 
 evaluation:
   name: vlm_gen

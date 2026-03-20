@@ -14,8 +14,9 @@ except ImportError:
 class DFKVLMValidator:
     """Validator for DFK VLM ground truth logic."""
     
-    def __init__(self, device: Any = "cpu", semantic_threshold: float = 0.8, **kwargs):
+    def __init__(self, device: Any = "cpu", semantic_threshold: float = 0.8, label_only: bool = False, **kwargs):
         self.semantic_threshold = float(semantic_threshold)
+        self.label_only = label_only
         self.device = device
         self.embed_model = None
         
@@ -40,6 +41,9 @@ class DFKVLMValidator:
         
         if gen_label != gt_label:
             return False
+            
+        if self.label_only:
+            return True
             
         # Structural match success. Check Semantic.
         gen_analisis_match = re.search(r"Analisis:\s*(.*)", generated_text, re.DOTALL)
