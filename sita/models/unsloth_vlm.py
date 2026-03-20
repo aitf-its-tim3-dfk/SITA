@@ -57,17 +57,14 @@ class UnslothVLMLoader(BaseModelLoader):
         )
 
         if chat_template is not None:
-            # Apply Unsloth's built-in chat template first (sets special tokens, etc.)
-            from unsloth.chat_templates import get_chat_template
-            tokenizer = get_chat_template(
-                tokenizer,
-                chat_template=chat_template,
-            )
-
-            # Override the Jinja template with our own if we have one
             from sita.templates import load_chat_template
             template_str = load_chat_template(chat_template)
             if template_str is not None:
                 tokenizer.chat_template = template_str
+            else:
+                raise FileNotFoundError(
+                    f"Chat template '{chat_template}' not found. "
+                    f"Place a .jinja file in sita/templates/ or provide a full path."
+                )
 
         return model, tokenizer
