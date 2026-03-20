@@ -131,6 +131,7 @@ def run_experiment(config: ExperimentConfig) -> dict:
         eval_dataset=eval_ds,
         config=config.training,
         reporting=config.reporting,
+        evaluation_config=config.evaluation,
         **config.trainer.kwargs,
     )
 

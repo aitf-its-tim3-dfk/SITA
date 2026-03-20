@@ -56,6 +56,8 @@ class UnslothVLMRFTTrainer(BaseTrainer):
         # Extract config kwargs
         trainer_kwargs = kwargs.copy()
         
+        evaluation_config = trainer_kwargs.pop("evaluation_config", None)
+        
         num_samples = int(trainer_kwargs.pop("num_samples", 2))
         max_new_tokens = int(trainer_kwargs.pop("max_new_tokens", 256))
         temperature = float(trainer_kwargs.pop("temperature", 0.7))
@@ -263,6 +265,28 @@ class UnslothVLMRFTTrainer(BaseTrainer):
                             "train/epoch": epoch + (step + 1) / len(dataloader),
                             "train/valid_samples": len(valid_sft_batch),
                         }, step=global_step)
+
+                # Evaluation
+                if eval_dataset is not None and config.eval_steps > 0 and global_step % config.eval_steps == 0:
+                    if evaluation_config is not None:
+                        from sita.core.registry import EVALUATOR_REGISTRY
+                        evaluator_cls = EVALUATOR_REGISTRY.get(evaluation_config.name)
+                        if evaluator_cls:
+                            evaluator = evaluator_cls()
+                            logger.info(f"Running evaluation at step {global_step}...")
+                            metrics = evaluator.evaluate(
+                                model=model,
+                                tokenizer=tokenizer,
+                                dataset=eval_dataset,
+                                **evaluation_config.kwargs
+                            )
+                            if use_wandb:
+                                import wandb
+                                wandb.log({f"eval/{k}": v for k, v in metrics.items()}, step=global_step)
+                            
+                            # Revert model to training mode
+                            FastVisionModel.for_training(model)
+                            model.train()
 
                 # Checkpointing
                 if config.save_steps > 0 and global_step % config.save_steps == 0:
