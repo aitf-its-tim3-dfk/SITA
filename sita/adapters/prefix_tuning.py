@@ -24,6 +24,13 @@ class PrefixTuningAdapter(BaseAdapter):
     """
 
     def apply(self, model: nn.Module, config: AdapterConfig) -> nn.Module:
+        # Prefix tuning is incompatible with gradient checkpointing — disable it
+        if hasattr(model, "gradient_checkpointing_disable"):
+            model.gradient_checkpointing_disable()
+        for module in model.modules():
+            if hasattr(module, "gradient_checkpointing"):
+                module.gradient_checkpointing = False
+
         pt_config = PrefixTuningConfig(**config.kwargs)
         model = get_peft_model(model, pt_config)
         model.print_trainable_parameters()
