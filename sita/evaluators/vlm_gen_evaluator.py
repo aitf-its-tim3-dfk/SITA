@@ -111,6 +111,12 @@ class VLMGenEvaluator(BaseEvaluator):
 
         device = next(model.parameters()).device
 
+        # Force left-padding for generation.  Training (SFTTrainer / DataCollator)
+        # may set padding_side to 'right'
+        for obj in (tokenizer, getattr(tokenizer, "tokenizer", None)):
+            if obj is not None and hasattr(obj, "padding_side"):
+                obj.padding_side = "left"
+
         gt_labels: list[str] = []
         pred_labels: list[str] = []
         gt_analyses: list[str] = []
