@@ -155,9 +155,6 @@ class VLMGenEvaluator(BaseEvaluator):
             if not texts:
                 continue
 
-            if hasattr(tokenizer, "padding_side") and tokenizer.padding_side != "left":
-                tokenizer.padding_side = "left"
-
             # Tokenize with image processing — pass images to the processor
             proc_kwargs: dict[str, Any] = {
                 "text": texts if batch_size > 1 else texts[0],

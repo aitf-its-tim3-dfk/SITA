@@ -53,7 +53,11 @@ class HFVLMLoader(BaseModelLoader):
         model = auto_class.from_pretrained(config.pretrained, **kwargs)
         processor = AutoProcessor.from_pretrained(config.pretrained)
 
+        # Set on both the processor wrapper AND the inner tokenizer so that
+        # model.generate() (which checks the inner one) picks it up too.
         for attr, value in config.tokenizer_kwargs.items():
             setattr(processor, attr, value)
+            if hasattr(processor, "tokenizer") and hasattr(processor.tokenizer, attr):
+                setattr(processor.tokenizer, attr, value)
 
         return model, processor

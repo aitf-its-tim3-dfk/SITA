@@ -68,7 +68,11 @@ class UnslothVLMLoader(BaseModelLoader):
                 )
 
         # Apply any tokenizer overrides (e.g. padding_side, pad_token, etc.)
+        # Set on both the processor wrapper AND the inner tokenizer so that
+        # model.generate() (which checks the inner one) picks it up too.
         for attr, value in config.tokenizer_kwargs.items():
             setattr(tokenizer, attr, value)
+            if hasattr(tokenizer, "tokenizer") and hasattr(tokenizer.tokenizer, attr):
+                setattr(tokenizer.tokenizer, attr, value)
 
         return model, tokenizer
