@@ -67,4 +67,8 @@ class UnslothVLMLoader(BaseModelLoader):
                     f"Place a .jinja file in sita/templates/ or provide a full path."
                 )
 
+        # Apply any tokenizer overrides (e.g. padding_side, pad_token, etc.)
+        for attr, value in config.tokenizer_kwargs.items():
+            setattr(tokenizer, attr, value)
+
         return model, tokenizer

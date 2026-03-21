@@ -20,6 +20,7 @@ class ModelConfig:
     name: str  # registry key, e.g. "hf_causal_lm", "hf_vlm"
     pretrained: str  # HF model id or local path
     kwargs: dict[str, Any] = field(default_factory=dict)
+    tokenizer_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

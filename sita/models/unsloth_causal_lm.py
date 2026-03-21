@@ -56,4 +56,7 @@ class UnslothCausalLMLoader(BaseModelLoader):
             **kwargs,
         )
 
+        for attr, value in config.tokenizer_kwargs.items():
+            setattr(tokenizer, attr, value)
+
         return model, tokenizer

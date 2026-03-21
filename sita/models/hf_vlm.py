@@ -53,4 +53,7 @@ class HFVLMLoader(BaseModelLoader):
         model = auto_class.from_pretrained(config.pretrained, **kwargs)
         processor = AutoProcessor.from_pretrained(config.pretrained)
 
+        for attr, value in config.tokenizer_kwargs.items():
+            setattr(processor, attr, value)
+
         return model, processor
