@@ -110,53 +110,61 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
         rng = random.Random(seed)
         rng.shuffle(rows)
 
-        # Convert to conversation format
-        conversations = []
-        for row in rows:
-            try:
-                # We don't open the image here to keep it serializable for Dataset.from_list
-                # SFTTrainer/Processor will handle opening/loading if needed, or we provide it.
-                # Actually, many VLM processors expect PIL images.
-                image = Image.open(row["image_path"]).convert("RGB")
-            except Exception as e:
-                logger.warning(f"Failed to open {row['image_path']}: {e}, skipping")
-                continue
+        # Helper to generate rows for Dataset.from_generator
+        def gen():
+            for row in rows:
+                try:
+                    # Load image only when needed by the generator
+                    image = Image.open(row["image_path"]).convert("RGB")
+                except Exception as e:
+                    logger.warning(f"Failed to open {row['image_path']}: {e}, skipping")
+                    continue
 
-            answer = f"Label: {row['label']}\n\nAnalisis: {row['analisis']}"
+                answer = f"Label: {row['label']}\n\nAnalisis: {row['analisis']}"
 
-            conv = {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": instruction},
-                            {"type": "image", "image": image},
-                        ],
-                    },
-                    {
-                        "role": "assistant",
-                        "content": [
-                            {"type": "text", "text": answer},
-                        ],
-                    },
-                ]
-            }
-            conversations.append(conv)
-
-        # Train/eval split
-        split_idx = int(len(conversations) * train_ratio)
-        train_convs = conversations[:split_idx]
-        eval_convs = conversations[split_idx:] if split_idx < len(conversations) else []
+                # Standard TRL multimodal conversational format:
+                # 1. messages contains structured content with type='image' markers
+                # 2. images contains a list of PIL images matching the markers
+                yield {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": instruction},
+                                {"type": "image"}, # placeholder (TRL counts these)
+                            ],
+                        },
+                        {
+                            "role": "assistant",
+                            "content": [
+                                {"type": "text", "text": answer},
+                            ],
+                        },
+                    ],
+                    "images": [image] # Exactly 1 image for 1 placeholder
+                }
 
         # Convert to HF Dataset (required by recent TRL versions)
         try:
             from datasets import Dataset
-            train_ds = Dataset.from_list(train_convs)
-            eval_ds = Dataset.from_list(eval_convs) if eval_convs else None
+            # Using from_generator is MUCH faster and more memory-efficient for large image datasets
+            full_ds = Dataset.from_generator(gen)
+            
+            # Split using HF Dataset methods
+            if train_ratio < 1.0:
+                split_ds = full_ds.train_test_split(test_size=1.0 - train_ratio, seed=seed)
+                train_ds = split_ds["train"]
+                eval_ds = split_ds["test"]
+            else:
+                train_ds = full_ds
+                eval_ds = None
         except ImportError:
-            logger.warning("datasets library not found. Returning raw lists (may cause SFTTrainer to fail).")
-            train_ds = train_convs
-            eval_ds = eval_convs if eval_convs else None
+            logger.warning("datasets library not found. Falling back to list-based loading (slow).")
+            # If datasets not available, we have to collect them all (slow)
+            conversations = list(gen())
+            split_idx = int(len(conversations) * train_ratio)
+            train_ds = conversations[:split_idx]
+            eval_ds = conversations[split_idx:] if split_idx < len(conversations) else None
 
         logger.info(
             f"Split: {len(train_ds)} train, "
