@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import inspect
 from typing import Any
 
 from torch import nn
@@ -106,7 +107,6 @@ class HFSFTTrainer(BaseTrainer):
             "remove_unused_columns": False,
         }
         
-        import inspect
         sft_params = inspect.signature(SFTConfig).parameters
 
         # Add SFT-specific fields if they were provided
@@ -156,15 +156,23 @@ class HFSFTTrainer(BaseTrainer):
 
         sft_config = SFTConfig(**sft_config_kwargs)
 
-        trainer = SFTTrainer(
-            model=model,
-            args=sft_config,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
-            data_collator=data_collator,
+        # Check SFTTrainer signature for 'tokenizer' vs 'processing_class' (TRL 0.12.0+)
+        trainer_params = inspect.signature(SFTTrainer).parameters
+        sft_trainer_kwargs = {
+            "model": model,
+            "args": sft_config,
+            "train_dataset": train_dataset,
+            "eval_dataset": eval_dataset,
+            "data_collator": data_collator,
             **trainer_kwargs,
-        )
+        }
+        
+        if "processing_class" in trainer_params:
+            sft_trainer_kwargs["processing_class"] = tokenizer
+        else:
+            sft_trainer_kwargs["tokenizer"] = tokenizer
+
+        trainer = SFTTrainer(**sft_trainer_kwargs)
 
         logger.info(
             f"Starting SFT training (packing={resolved_packing}, max_length={log_max_len})..."

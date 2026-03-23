@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import inspect
 from typing import Any
 
 from torch import nn
@@ -125,14 +126,22 @@ class UnslothVLMSFTTrainer(BaseTrainer):
             response_part=response_part,
         )
 
-        trainer = SFTTrainer(
-            model=model,
-            tokenizer=tokenizer,
-            data_collator=data_collator,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            args=sft_config,
-        )
+        # Check SFTTrainer signature for 'tokenizer' vs 'processing_class' (TRL 0.12.0+)
+        trainer_params = inspect.signature(SFTTrainer).parameters
+        sft_trainer_kwargs = {
+            "model": model,
+            "data_collator": data_collator,
+            "train_dataset": train_dataset,
+            "eval_dataset": eval_dataset,
+            "args": sft_config,
+        }
+
+        if "processing_class" in trainer_params:
+            sft_trainer_kwargs["processing_class"] = tokenizer
+        else:
+            sft_trainer_kwargs["tokenizer"] = tokenizer
+
+        trainer = SFTTrainer(**sft_trainer_kwargs)
 
         logger.info("Starting VLM SFT training...")
         trainer.train()
