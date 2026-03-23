@@ -50,7 +50,17 @@ class HFSFTTrainer(BaseTrainer):
         **kwargs,
     ) -> nn.Module:
         try:
-            from trl import DataCollatorForCompletionOnlyLM, SFTConfig, SFTTrainer
+            from trl import SFTConfig, SFTTrainer
+
+            # Try to import DataCollatorForCompletionOnlyLM from top level, then from submodules
+            try:
+                from trl import DataCollatorForCompletionOnlyLM
+            except ImportError:
+                try:
+                    # In some recent TRL versions it might be here
+                    from trl.trainer import DataCollatorForCompletionOnlyLM
+                except ImportError:
+                    DataCollatorForCompletionOnlyLM = None
         except ImportError:
             raise ImportError("trl library not found. Please install with `pip install trl`.")
 
@@ -69,42 +79,60 @@ class HFSFTTrainer(BaseTrainer):
         response_template = trainer_kwargs.pop("response_template", None)
         dataset_num_proc = trainer_kwargs.pop("dataset_num_proc", None)
 
-        # Build SFTConfig
-        sft_config = SFTConfig(
-            output_dir=config.output_dir,
-            num_train_epochs=config.num_epochs,
-            per_device_train_batch_size=config.batch_size,
-            per_device_eval_batch_size=config.batch_size,
-            learning_rate=config.learning_rate,
-            gradient_accumulation_steps=config.gradient_accumulation_steps,
-            fp16=config.fp16,
-            bf16=config.bf16,
-            logging_steps=config.logging_steps,
-            save_steps=config.save_steps,
-            eval_steps=config.eval_steps if eval_dataset else None,
-            eval_strategy="steps" if eval_dataset else "no",
-            warmup_ratio=config.warmup_ratio,
-            weight_decay=config.weight_decay,
-            max_grad_norm=config.max_grad_norm,
-            save_total_limit=2,
-            report_to=report_to,
-            remove_unused_columns=False,
-            max_seq_length=max_seq_length,
-            packing=packing,
-            dataset_text_field=dataset_text_field,
-            dataset_num_proc=dataset_num_proc,
-            **config.extra,
-        )
+        # Build SFTConfig kwargs
+        sft_config_kwargs = {
+            "output_dir": config.output_dir,
+            "num_train_epochs": config.num_epochs,
+            "per_device_train_batch_size": config.batch_size,
+            "per_device_eval_batch_size": config.batch_size,
+            "learning_rate": config.learning_rate,
+            "gradient_accumulation_steps": config.gradient_accumulation_steps,
+            "fp16": config.fp16,
+            "bf16": config.bf16,
+            "logging_steps": config.logging_steps,
+            "save_steps": config.save_steps,
+            "eval_steps": config.eval_steps if eval_dataset else None,
+            "eval_strategy": "steps" if eval_dataset else "no",
+            "warmup_ratio": config.warmup_ratio,
+            "weight_decay": config.weight_decay,
+            "max_grad_norm": config.max_grad_norm,
+            "save_total_limit": 2,
+            "report_to": report_to,
+            "remove_unused_columns": False,
+            "max_seq_length": max_seq_length,
+            "packing": packing,
+            "dataset_text_field": dataset_text_field,
+            "dataset_num_proc": dataset_num_proc,
+        }
+        sft_config_kwargs.update(config.extra)
 
         data_collator = None
         if response_template:
-            # If tokenizer is a VLM processor, use its inner text tokenizer
-            text_tokenizer = getattr(tokenizer, "tokenizer", tokenizer)
-            data_collator = DataCollatorForCompletionOnlyLM(
-                response_template=response_template,
-                instruction_template=instruction_template,
-                tokenizer=text_tokenizer,
-            )
+            # Check if SFTConfig supports the new completion_only_loss (added in TRL 0.12.0+)
+            import inspect
+
+            sft_params = inspect.signature(SFTConfig).parameters
+            if "completion_only_loss" in sft_params:
+                logger.info("Using SFTConfig(completion_only_loss=True) for masking.")
+                sft_config_kwargs["completion_only_loss"] = True
+                sft_config_kwargs["instruction_template"] = instruction_template
+                sft_config_kwargs["response_template"] = response_template
+            elif DataCollatorForCompletionOnlyLM is not None:
+                logger.info("Using DataCollatorForCompletionOnlyLM for masking.")
+                # If tokenizer is a VLM processor, use its inner text tokenizer
+                text_tokenizer = getattr(tokenizer, "tokenizer", tokenizer)
+                data_collator = DataCollatorForCompletionOnlyLM(
+                    response_template=response_template,
+                    instruction_template=instruction_template,
+                    tokenizer=text_tokenizer,
+                )
+            else:
+                logger.warning(
+                    "Completion masking requested but neither SFTConfig(completion_only_loss) "
+                    "nor DataCollatorForCompletionOnlyLM are available. Masking will be skipped."
+                )
+
+        sft_config = SFTConfig(**sft_config_kwargs)
 
         trainer = SFTTrainer(
             model=model,
