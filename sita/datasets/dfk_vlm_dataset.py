@@ -114,6 +114,9 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
         conversations = []
         for row in rows:
             try:
+                # We don't open the image here to keep it serializable for Dataset.from_list
+                # SFTTrainer/Processor will handle opening/loading if needed, or we provide it.
+                # Actually, many VLM processors expect PIL images.
                 image = Image.open(row["image_path"]).convert("RGB")
             except Exception as e:
                 logger.warning(f"Failed to open {row['image_path']}: {e}, skipping")
@@ -142,8 +145,18 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
 
         # Train/eval split
         split_idx = int(len(conversations) * train_ratio)
-        train_ds = conversations[:split_idx]
-        eval_ds = conversations[split_idx:] if split_idx < len(conversations) else None
+        train_convs = conversations[:split_idx]
+        eval_convs = conversations[split_idx:] if split_idx < len(conversations) else []
+
+        # Convert to HF Dataset (required by recent TRL versions)
+        try:
+            from datasets import Dataset
+            train_ds = Dataset.from_list(train_convs)
+            eval_ds = Dataset.from_list(eval_convs) if eval_convs else None
+        except ImportError:
+            logger.warning("datasets library not found. Returning raw lists (may cause SFTTrainer to fail).")
+            train_ds = train_convs
+            eval_ds = eval_convs if eval_convs else None
 
         logger.info(
             f"Split: {len(train_ds)} train, "
