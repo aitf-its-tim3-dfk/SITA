@@ -67,6 +67,7 @@ class HFTrainer(BaseTrainer):
             max_grad_norm=config.max_grad_norm,
             save_total_limit=2,
             report_to=report_to,
+            remove_unused_columns=False,
             **config.extra,
         )
 
