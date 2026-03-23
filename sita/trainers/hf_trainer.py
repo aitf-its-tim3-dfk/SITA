@@ -70,8 +70,11 @@ class HFTrainer(BaseTrainer):
             **config.extra,
         )
 
+        # If tokenizer is a VLM processor, use its inner text tokenizer for padding
+        text_tokenizer = getattr(tokenizer, "tokenizer", tokenizer)
+
         data_collator = DataCollatorForLanguageModeling(
-            tokenizer=tokenizer,
+            tokenizer=text_tokenizer,
             mlm=False,
         )
 
