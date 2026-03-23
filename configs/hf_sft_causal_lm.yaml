@@ -1,0 +1,56 @@
+# SITA Experiment Config — TRL SFTTrainer on Causal LM
+# Run: sita configs/hf_sft_causal_lm.yaml
+
+experiment_name: hf-sft-tinyllama
+
+seed: 42
+
+model:
+  name: hf_causal_lm
+  pretrained: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+  kwargs:
+    torch_dtype: float16
+    device_map: auto
+
+adapter:
+  name: lora
+  kwargs:
+    r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    target_modules:
+      - q_proj
+      - v_proj
+    task_type: CAUSAL_LM
+
+dataset:
+  name: hf_dataset
+  kwargs:
+    path: tatsu-lab/alpaca
+    text_field: text
+    max_length: 512
+    skip_tokenization: true
+
+training:
+  output_dir: ./output/hf-sft-tinyllama
+  num_epochs: 1
+  batch_size: 4
+  learning_rate: 2e-4
+  gradient_accumulation_steps: 4
+  fp16: true
+  logging_steps: 10
+  save_steps: 200
+  eval_steps: 200
+  warmup_ratio: 0.03
+
+trainer:
+  name: hf_sft_trainer
+  kwargs:
+    dataset_text_field: "text"
+    max_seq_length: 512
+    packing: false
+
+evaluation:
+  name: loss
+  kwargs:
+    batch_size: 8

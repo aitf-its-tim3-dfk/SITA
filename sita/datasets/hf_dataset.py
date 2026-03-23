@@ -44,6 +44,7 @@ class HFDatasetLoader(BaseDatasetLoader):
         text_field = kwargs.pop("text_field", "text")
         max_length = kwargs.pop("max_length", 512)
         streaming = kwargs.pop("streaming", False)
+        skip_tokenization = kwargs.pop("skip_tokenization", False)
 
         # load raw dataset
         load_kwargs = {"path": path, "streaming": streaming}
@@ -60,6 +61,9 @@ class HFDatasetLoader(BaseDatasetLoader):
             except ValueError:
                 # split doesn't exist, that's fine
                 pass
+
+        if skip_tokenization:
+            return train_ds, eval_ds
 
         # tokenize
         def tokenize_fn(examples):
