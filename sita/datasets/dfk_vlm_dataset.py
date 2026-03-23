@@ -110,9 +110,14 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
         rng = random.Random(seed)
         rng.shuffle(rows)
 
+        # Split metadata rows FIRST to avoid train_test_split overhead on generators
+        split_idx = int(len(rows) * train_ratio)
+        train_rows = rows[:split_idx]
+        eval_rows = rows[split_idx:] if split_idx < len(rows) else []
+
         # Helper to generate rows for Dataset.from_generator
-        def gen():
-            for row in rows:
+        def gen(row_list):
+            for row in row_list:
                 try:
                     # Load image only when needed by the generator
                     image = Image.open(row["image_path"]).convert("RGB")
@@ -122,16 +127,13 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
 
                 answer = f"Label: {row['label']}\n\nAnalisis: {row['analisis']}"
 
-                # Standard TRL multimodal conversational format:
-                # 1. messages contains structured content with type='image' markers
-                # 2. images contains a list of PIL images matching the markers
                 yield {
                     "messages": [
                         {
                             "role": "user",
                             "content": [
                                 {"type": "text", "text": instruction},
-                                {"type": "image"}, # placeholder (TRL counts these)
+                                {"type": "image"},
                             ],
                         },
                         {
@@ -141,30 +143,19 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
                             ],
                         },
                     ],
-                    "images": [image] # Exactly 1 image for 1 placeholder
+                    "images": [image]
                 }
 
         # Convert to HF Dataset (required by recent TRL versions)
         try:
             from datasets import Dataset
-            # Using from_generator is MUCH faster and more memory-efficient for large image datasets
-            full_ds = Dataset.from_generator(gen)
-            
-            # Split using HF Dataset methods
-            if train_ratio < 1.0:
-                split_ds = full_ds.train_test_split(test_size=1.0 - train_ratio, seed=seed)
-                train_ds = split_ds["train"]
-                eval_ds = split_ds["test"]
-            else:
-                train_ds = full_ds
-                eval_ds = None
+            # Creating separate generators avoids materializing the whole thing in memory or doing a full pass for split
+            train_ds = Dataset.from_generator(gen, gen_kwargs={"row_list": train_rows})
+            eval_ds = Dataset.from_generator(gen, gen_kwargs={"row_list": eval_rows}) if eval_rows else None
         except ImportError:
             logger.warning("datasets library not found. Falling back to list-based loading (slow).")
-            # If datasets not available, we have to collect them all (slow)
-            conversations = list(gen())
-            split_idx = int(len(conversations) * train_ratio)
-            train_ds = conversations[:split_idx]
-            eval_ds = conversations[split_idx:] if split_idx < len(conversations) else None
+            train_ds = list(gen(train_rows))
+            eval_ds = list(gen(eval_rows)) if eval_rows else None
 
         logger.info(
             f"Split: {len(train_ds)} train, "
