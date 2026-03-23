@@ -23,7 +23,7 @@ class HFSFTTrainer(BaseTrainer):
 
     Trainer-level kwargs (from ``trainer.kwargs`` in YAML):
       - ``dataset_text_field`` (str): The column name in the dataset containing the text.
-      - ``max_seq_length`` (int): Maximum sequence length for the trainer. Default 1024.
+      - ``max_length`` / ``max_seq_length`` (int): Maximum sequence length. Default 1024.
       - ``packing`` (bool): Whether to use packing (concatenating samples). Default False.
       - ``instruction_template`` (str): Optional template for completion-only masking.
       - ``response_template`` (str): Optional template for completion-only masking.
@@ -35,7 +35,7 @@ class HFSFTTrainer(BaseTrainer):
           name: hf_sft_trainer
           kwargs:
             dataset_text_field: "text"
-            max_seq_length: 2048
+            max_length: 2048
             packing: false
             response_template: "### Response:"
     """
@@ -72,9 +72,14 @@ class HFSFTTrainer(BaseTrainer):
         trainer_kwargs.pop("reporting", None)
         trainer_kwargs.pop("evaluation_config", None)
 
+        # These have moved from SFTTrainer to SFTConfig in recent TRL versions
         dataset_text_field = trainer_kwargs.pop("dataset_text_field", None)
-        max_seq_length = trainer_kwargs.pop("max_seq_length", 1024)
-        packing = trainer_kwargs.pop("packing", False)
+        # Handle both 'max_length' and deprecated 'max_seq_length'
+        max_length = trainer_kwargs.pop("max_length", None)
+        max_seq_length = trainer_kwargs.pop("max_seq_length", None)
+        resolved_max_len = max_length or max_seq_length
+        
+        packing = trainer_kwargs.pop("packing", None)
         instruction_template = trainer_kwargs.pop("instruction_template", None)
         response_template = trainer_kwargs.pop("response_template", None)
         dataset_num_proc = trainer_kwargs.pop("dataset_num_proc", None)
@@ -99,19 +104,36 @@ class HFSFTTrainer(BaseTrainer):
             "save_total_limit": 2,
             "report_to": report_to,
             "remove_unused_columns": False,
-            "max_seq_length": max_seq_length,
-            "packing": packing,
-            "dataset_text_field": dataset_text_field,
-            "dataset_num_proc": dataset_num_proc,
         }
+        
+        import inspect
+        sft_params = inspect.signature(SFTConfig).parameters
+
+        # Add SFT-specific fields if they were provided
+        if resolved_max_len is not None:
+            # SFTConfig moved from max_seq_length to max_length in newer versions (0.20.0+)
+            if "max_length" in sft_params:
+                sft_config_kwargs["max_length"] = resolved_max_len
+            else:
+                sft_config_kwargs["max_seq_length"] = resolved_max_len
+                
+        if dataset_text_field is not None:
+            sft_config_kwargs["dataset_text_field"] = dataset_text_field
+        if packing is not None:
+            sft_config_kwargs["packing"] = packing
+        if dataset_num_proc is not None:
+            sft_config_kwargs["dataset_num_proc"] = dataset_num_proc
+
+        # Also merge from config.extra (allows overriding anything)
         sft_config_kwargs.update(config.extra)
+
+        # Final resolved values for logging
+        log_max_len = sft_config_kwargs.get("max_length") or sft_config_kwargs.get("max_seq_length", 1024)
+        resolved_packing = sft_config_kwargs.get("packing", False)
 
         data_collator = None
         if response_template:
             # Check if SFTConfig supports the new completion_only_loss (added in TRL 0.12.0+)
-            import inspect
-
-            sft_params = inspect.signature(SFTConfig).parameters
             if "completion_only_loss" in sft_params:
                 logger.info("Using SFTConfig(completion_only_loss=True) for masking.")
                 sft_config_kwargs["completion_only_loss"] = True
@@ -145,7 +167,7 @@ class HFSFTTrainer(BaseTrainer):
         )
 
         logger.info(
-            f"Starting SFT training (packing={packing}, max_seq_length={max_seq_length})..."
+            f"Starting SFT training (packing={resolved_packing}, max_length={log_max_len})..."
         )
         trainer.train()
         logger.info("Training complete.")
