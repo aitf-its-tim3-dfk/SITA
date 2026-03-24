@@ -6,6 +6,7 @@ import logging
 import inspect
 from typing import Any
 
+import torch
 from torch import nn
 
 from sita.core.base_trainer import BaseTrainer
@@ -13,6 +14,75 @@ from sita.core.config import TrainingConfig
 from sita.core.registry import TRAINER_REGISTRY
 
 logger = logging.getLogger(__name__)
+
+
+class VLMResponseMaskingCollator:
+    """Wraps a base collator and masks labels for non-assistant tokens.
+
+    After the base collator tokenizes & pads the batch, this finds
+    ``<|im_start|>assistant`` → ``<|im_end|>`` spans in each sequence
+    and sets labels to -100 for everything *outside* those spans.
+    Works with any TRL version and any chat template that uses im_start/im_end.
+    """
+
+    def __init__(self, base_collator, tokenizer):
+        self.base_collator = base_collator
+        # Get the underlying text tokenizer for VLM processors
+        text_tok = getattr(tokenizer, "tokenizer", tokenizer)
+        # Resolve the token IDs we need for span detection
+        self.im_start_id = text_tok.convert_tokens_to_ids("<|im_start|>")
+        self.im_end_id = text_tok.convert_tokens_to_ids("<|im_end|>")
+        # "assistant" as token IDs (may be a single token or multiple)
+        self.assistant_ids = text_tok.encode("assistant", add_special_tokens=False)
+
+    def __call__(self, features, **kwargs):
+        batch = self.base_collator(features, **kwargs)
+
+        if "labels" not in batch or "input_ids" not in batch:
+            return batch
+
+        labels = batch["labels"]
+        input_ids = batch["input_ids"]
+
+        for i in range(input_ids.shape[0]):
+            ids = input_ids[i]
+            seq_len = ids.shape[0]
+            # Build a mask: True = keep (assistant response), False = mask out
+            keep = torch.zeros(seq_len, dtype=torch.bool, device=ids.device)
+
+            j = 0
+            while j < seq_len:
+                # Look for <|im_start|> followed by "assistant"
+                if ids[j].item() == self.im_start_id:
+                    # Check if the next tokens spell "assistant"
+                    a_len = len(self.assistant_ids)
+                    if j + 1 + a_len <= seq_len:
+                        candidate = ids[j + 1 : j + 1 + a_len].tolist()
+                        if candidate == self.assistant_ids:
+                            # Find the newline after "assistant\n" — content starts there
+                            content_start = j + 1 + a_len
+                            # Skip the newline token right after "assistant"
+                            if content_start < seq_len:
+                                content_start += 1  # skip \n
+
+                            # Find the matching <|im_end|>
+                            end_pos = seq_len  # fallback: end of sequence
+                            for k in range(content_start, seq_len):
+                                if ids[k].item() == self.im_end_id:
+                                    end_pos = k
+                                    break
+
+                            # Mark assistant content (between content_start and im_end) as keep
+                            keep[content_start:end_pos] = True
+                            j = end_pos + 1
+                            continue
+                j += 1
+
+            # Mask labels: set non-assistant positions to -100
+            labels[i][~keep] = -100
+
+        batch["labels"] = labels
+        return batch
 
 
 @TRAINER_REGISTRY.register("hf_sft_trainer")
@@ -26,8 +96,7 @@ class HFSFTTrainer(BaseTrainer):
       - ``dataset_text_field`` (str): The column name in the dataset containing the text.
       - ``max_length`` / ``max_seq_length`` (int): Maximum sequence length. Default 1024.
       - ``packing`` (bool): Whether to use packing (concatenating samples). Default False.
-      - ``instruction_template`` (str): Optional template for completion-only masking.
-      - ``response_template`` (str): Optional template for completion-only masking.
+      - ``response_template`` (str): Enables response-only masking via custom VLM collator.
       - ``dataset_num_proc`` (int): Number of processes for dataset preprocessing.
 
     Example YAML::
@@ -35,10 +104,9 @@ class HFSFTTrainer(BaseTrainer):
         trainer:
           name: hf_sft_trainer
           kwargs:
-            dataset_text_field: "text"
             max_length: 2048
             packing: false
-            response_template: "### Response:"
+            response_template: "<|im_start|>assistant"
     """
 
     def train(
@@ -52,16 +120,6 @@ class HFSFTTrainer(BaseTrainer):
     ) -> nn.Module:
         try:
             from trl import SFTConfig, SFTTrainer
-
-            # Try to import DataCollatorForCompletionOnlyLM from top level, then from submodules
-            try:
-                from trl import DataCollatorForCompletionOnlyLM
-            except ImportError:
-                try:
-                    # In some recent TRL versions it might be here
-                    from trl.trainer import DataCollatorForCompletionOnlyLM
-                except ImportError:
-                    DataCollatorForCompletionOnlyLM = None
         except ImportError:
             raise ImportError(
                 "trl library not found. Please install with `pip install trl`."
@@ -83,7 +141,7 @@ class HFSFTTrainer(BaseTrainer):
         resolved_max_len = max_length or max_seq_length
 
         packing = trainer_kwargs.pop("packing", None)
-        instruction_template = trainer_kwargs.pop("instruction_template", None)
+        trainer_kwargs.pop("instruction_template", None)  # consumed but unused now
         response_template = trainer_kwargs.pop("response_template", None)
         dataset_num_proc = trainer_kwargs.pop("dataset_num_proc", None)
 
@@ -113,7 +171,6 @@ class HFSFTTrainer(BaseTrainer):
 
         # Add SFT-specific fields if they were provided
         if resolved_max_len is not None:
-            # SFTConfig moved from max_seq_length to max_length in newer versions (0.20.0+)
             if "max_length" in sft_params:
                 sft_config_kwargs["max_length"] = resolved_max_len
             else:
@@ -135,45 +192,6 @@ class HFSFTTrainer(BaseTrainer):
         )
         resolved_packing = sft_config_kwargs.get("packing", False)
 
-        data_collator = None
-        if response_template:
-            if DataCollatorForCompletionOnlyLM is not None:
-                # Older TRL: use DataCollatorForCompletionOnlyLM directly
-                logger.info("Using DataCollatorForCompletionOnlyLM for masking.")
-                text_tokenizer = getattr(tokenizer, "tokenizer", tokenizer)
-                data_collator = DataCollatorForCompletionOnlyLM(
-                    response_template=response_template,
-                    instruction_template=instruction_template,
-                    tokenizer=text_tokenizer,
-                )
-            elif "completion_only_loss" in sft_params:
-                # Newer TRL (0.20.0+): collator removed, use completion_only_loss.
-                # This requires prompt-completion format, so transform messages datasets.
-                logger.info(
-                    "DataCollatorForCompletionOnlyLM not available. "
-                    "Converting messages→prompt/completion for completion_only_loss."
-                )
-                sft_config_kwargs["completion_only_loss"] = True
-
-                def _messages_to_prompt_completion(example):
-                    """Split messages into prompt (all but last) and completion (last)."""
-                    msgs = example.get("messages")
-                    if msgs and isinstance(msgs, list) and len(msgs) >= 2:
-                        example["prompt"] = msgs[:-1]
-                        example["completion"] = [msgs[-1]]
-                        del example["messages"]
-                    return example
-
-                train_dataset = train_dataset.map(_messages_to_prompt_completion)
-                if eval_dataset is not None:
-                    eval_dataset = eval_dataset.map(_messages_to_prompt_completion)
-            else:
-                logger.warning(
-                    "Completion masking requested but no supported mechanism found. "
-                    "Training on full sequence."
-                )
-
-
         sft_config = SFTConfig(**sft_config_kwargs)
 
         # Check SFTTrainer signature for 'tokenizer' vs 'processing_class' (TRL 0.12.0+)
@@ -183,7 +201,6 @@ class HFSFTTrainer(BaseTrainer):
             "args": sft_config,
             "train_dataset": train_dataset,
             "eval_dataset": eval_dataset,
-            "data_collator": data_collator,
             **trainer_kwargs,
         }
 
@@ -193,6 +210,14 @@ class HFSFTTrainer(BaseTrainer):
             sft_trainer_kwargs["tokenizer"] = tokenizer
 
         trainer = SFTTrainer(**sft_trainer_kwargs)
+
+        # Wrap the trainer's data collator with response masking if requested
+        if response_template:
+            logger.info("Wrapping data collator with VLMResponseMaskingCollator.")
+            trainer.data_collator = VLMResponseMaskingCollator(
+                base_collator=trainer.data_collator,
+                tokenizer=tokenizer,
+            )
 
         logger.info(
             f"Starting SFT training (packing={resolved_packing}, max_length={log_max_len})..."
