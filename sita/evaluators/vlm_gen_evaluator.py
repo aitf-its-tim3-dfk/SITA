@@ -189,24 +189,29 @@ class VLMGenEvaluator(BaseEvaluator):
                 gen_kwargs["do_sample"] = False
 
             import inspect
+            import transformers
             
             # Dynamically filter inputs using the model's actual forward signature
             # to gracefully handle PEFT wraps, Liger Kernel missing kwargs, 
             # or running a pure text model locally for a VLM task.
             unwrapped_model = model
-            # Unpack PeftModel wrapper if present to get true signature
-            if hasattr(model, "base_model"):
-                unwrapped_model = model.base_model
+            if hasattr(unwrapped_model, "get_base_model"):
+                unwrapped_model = unwrapped_model.get_base_model()
+            elif hasattr(unwrapped_model, "base_model"):
+                unwrapped_model = unwrapped_model.base_model
+                
+            # If unwrapped_model is still a PEFT internal wrapper (e.g. LoraModel)
+            if hasattr(unwrapped_model, "model") and not isinstance(unwrapped_model, transformers.PreTrainedModel):
+                unwrapped_model = unwrapped_model.model
             
             sig = inspect.signature(unwrapped_model.forward)
-            # If the model does not accept **kwargs, we strictly filter
-            if not any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
-                valid_keys = set(sig.parameters.keys())
-                # ensure standard generation keys are kept if they might be passed later
-                valid_keys.update(["input_ids", "attention_mask"])
-                
-                # pop anything not valid
-                inputs = {k: v for k, v in inputs.items() if k in valid_keys}
+            valid_keys = set(sig.parameters.keys())
+            
+            # Safely pop known vision keys if the base model doesn't expect them.
+            vision_keys = ["pixel_values", "image_grid_thw", "video_grid_thw", "mm_token_type_ids"]
+            for vk in vision_keys:
+                if vk in inputs and vk not in valid_keys:
+                    inputs.pop(vk)
 
             with torch.no_grad():
                 output_ids = model.generate(**inputs, **gen_kwargs)
