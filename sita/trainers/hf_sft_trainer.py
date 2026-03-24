@@ -137,10 +137,11 @@ class HFSFTTrainer(BaseTrainer):
 
         data_collator = None
         if response_template:
-            # Check if SFTConfig supports the new completion_only_loss (added in TRL 0.12.0+)
-            if "completion_only_loss" in sft_params:
-                logger.info("Using SFTConfig(completion_only_loss=True) for masking.")
-                sft_config_kwargs["completion_only_loss"] = True
+            # For conversational datasets (messages format), use assistant_only_loss.
+            # completion_only_loss does NOT work with messages format in TRL.
+            if "assistant_only_loss" in sft_params:
+                logger.info("Using SFTConfig(assistant_only_loss=True) for masking.")
+                sft_config_kwargs["assistant_only_loss"] = True
             elif DataCollatorForCompletionOnlyLM is not None:
                 logger.info("Using DataCollatorForCompletionOnlyLM for masking.")
                 # If tokenizer is a VLM processor, use its inner text tokenizer
@@ -152,7 +153,7 @@ class HFSFTTrainer(BaseTrainer):
                 )
             else:
                 logger.warning(
-                    "Completion masking requested but neither SFTConfig(completion_only_loss) "
+                    "Completion masking requested but neither SFTConfig(assistant_only_loss) "
                     "nor DataCollatorForCompletionOnlyLM are available. Masking will be skipped."
                 )
 
