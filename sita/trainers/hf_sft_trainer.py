@@ -63,7 +63,9 @@ class HFSFTTrainer(BaseTrainer):
                 except ImportError:
                     DataCollatorForCompletionOnlyLM = None
         except ImportError:
-            raise ImportError("trl library not found. Please install with `pip install trl`.")
+            raise ImportError(
+                "trl library not found. Please install with `pip install trl`."
+            )
 
         reporting = kwargs.get("reporting")
         report_to = "wandb" if reporting and reporting.wandb else "none"
@@ -79,7 +81,7 @@ class HFSFTTrainer(BaseTrainer):
         max_length = trainer_kwargs.pop("max_length", None)
         max_seq_length = trainer_kwargs.pop("max_seq_length", None)
         resolved_max_len = max_length or max_seq_length
-        
+
         packing = trainer_kwargs.pop("packing", None)
         instruction_template = trainer_kwargs.pop("instruction_template", None)
         response_template = trainer_kwargs.pop("response_template", None)
@@ -106,7 +108,7 @@ class HFSFTTrainer(BaseTrainer):
             "report_to": report_to,
             "remove_unused_columns": False,
         }
-        
+
         sft_params = inspect.signature(SFTConfig).parameters
 
         # Add SFT-specific fields if they were provided
@@ -116,7 +118,7 @@ class HFSFTTrainer(BaseTrainer):
                 sft_config_kwargs["max_length"] = resolved_max_len
             else:
                 sft_config_kwargs["max_seq_length"] = resolved_max_len
-                
+
         if dataset_text_field is not None:
             sft_config_kwargs["dataset_text_field"] = dataset_text_field
         if packing is not None:
@@ -128,7 +130,9 @@ class HFSFTTrainer(BaseTrainer):
         sft_config_kwargs.update(config.extra)
 
         # Final resolved values for logging
-        log_max_len = sft_config_kwargs.get("max_length") or sft_config_kwargs.get("max_seq_length", 1024)
+        log_max_len = sft_config_kwargs.get("max_length") or sft_config_kwargs.get(
+            "max_seq_length", 1024
+        )
         resolved_packing = sft_config_kwargs.get("packing", False)
 
         data_collator = None
@@ -137,8 +141,6 @@ class HFSFTTrainer(BaseTrainer):
             if "completion_only_loss" in sft_params:
                 logger.info("Using SFTConfig(completion_only_loss=True) for masking.")
                 sft_config_kwargs["completion_only_loss"] = True
-                sft_config_kwargs["instruction_template"] = instruction_template
-                sft_config_kwargs["response_template"] = response_template
             elif DataCollatorForCompletionOnlyLM is not None:
                 logger.info("Using DataCollatorForCompletionOnlyLM for masking.")
                 # If tokenizer is a VLM processor, use its inner text tokenizer
@@ -166,7 +168,7 @@ class HFSFTTrainer(BaseTrainer):
             "data_collator": data_collator,
             **trainer_kwargs,
         }
-        
+
         if "processing_class" in trainer_params:
             sft_trainer_kwargs["processing_class"] = tokenizer
         else:
