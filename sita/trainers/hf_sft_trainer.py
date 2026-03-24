@@ -137,25 +137,42 @@ class HFSFTTrainer(BaseTrainer):
 
         data_collator = None
         if response_template:
-            # For conversational datasets (messages format), use assistant_only_loss.
-            # completion_only_loss does NOT work with messages format in TRL.
-            if "assistant_only_loss" in sft_params:
-                logger.info("Using SFTConfig(assistant_only_loss=True) for masking.")
-                sft_config_kwargs["assistant_only_loss"] = True
-            elif DataCollatorForCompletionOnlyLM is not None:
+            if DataCollatorForCompletionOnlyLM is not None:
+                # Older TRL: use DataCollatorForCompletionOnlyLM directly
                 logger.info("Using DataCollatorForCompletionOnlyLM for masking.")
-                # If tokenizer is a VLM processor, use its inner text tokenizer
                 text_tokenizer = getattr(tokenizer, "tokenizer", tokenizer)
                 data_collator = DataCollatorForCompletionOnlyLM(
                     response_template=response_template,
                     instruction_template=instruction_template,
                     tokenizer=text_tokenizer,
                 )
+            elif "completion_only_loss" in sft_params:
+                # Newer TRL (0.20.0+): collator removed, use completion_only_loss.
+                # This requires prompt-completion format, so transform messages datasets.
+                logger.info(
+                    "DataCollatorForCompletionOnlyLM not available. "
+                    "Converting messages→prompt/completion for completion_only_loss."
+                )
+                sft_config_kwargs["completion_only_loss"] = True
+
+                def _messages_to_prompt_completion(example):
+                    """Split messages into prompt (all but last) and completion (last)."""
+                    msgs = example.get("messages")
+                    if msgs and isinstance(msgs, list) and len(msgs) >= 2:
+                        example["prompt"] = msgs[:-1]
+                        example["completion"] = [msgs[-1]]
+                        del example["messages"]
+                    return example
+
+                train_dataset = train_dataset.map(_messages_to_prompt_completion)
+                if eval_dataset is not None:
+                    eval_dataset = eval_dataset.map(_messages_to_prompt_completion)
             else:
                 logger.warning(
-                    "Completion masking requested but neither SFTConfig(assistant_only_loss) "
-                    "nor DataCollatorForCompletionOnlyLM are available. Masking will be skipped."
+                    "Completion masking requested but no supported mechanism found. "
+                    "Training on full sequence."
                 )
+
 
         sft_config = SFTConfig(**sft_config_kwargs)
 
