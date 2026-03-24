@@ -38,12 +38,26 @@ class HFVLMLoader(BaseModelLoader):
     def load(self, config: ModelConfig) -> tuple[nn.Module, Any]:
         kwargs = dict(config.kwargs)
 
-        # handle dtype
-        if "torch_dtype" in kwargs and isinstance(kwargs["torch_dtype"], str):
-            kwargs["torch_dtype"] = getattr(torch, kwargs["torch_dtype"])
+        # handle dtype synonyms
+        dtype_key = "torch_dtype" if "torch_dtype" in kwargs else "dtype"
+        if dtype_key in kwargs and isinstance(kwargs[dtype_key], str):
+            if kwargs[dtype_key] == "None":
+                kwargs[dtype_key] = None
+            else:
+                kwargs[dtype_key] = getattr(torch, kwargs[dtype_key])
+        
+        # Ensure we use torch_dtype for AutoModel
+        if "dtype" in kwargs and "torch_dtype" not in kwargs:
+            kwargs["torch_dtype"] = kwargs.pop("dtype")
 
         # optionally use a specific model class instead of AutoModel
         auto_class_name = kwargs.pop("auto_class", None)
+        
+        # Separate processor kwargs if provided, otherwise default to empty
+        processor_kwargs = kwargs.pop("processor_kwargs", {})
+        if not isinstance(processor_kwargs, dict):
+            processor_kwargs = {}
+
         if auto_class_name:
             import transformers
             auto_class = getattr(transformers, auto_class_name)
@@ -51,7 +65,9 @@ class HFVLMLoader(BaseModelLoader):
             auto_class = AutoModel
 
         model = auto_class.from_pretrained(config.pretrained, **kwargs)
-        processor = AutoProcessor.from_pretrained(config.pretrained)
+        
+        # Merge processor_kwargs with common defaults if needed
+        processor = AutoProcessor.from_pretrained(config.pretrained, **processor_kwargs)
 
         # Set on both the processor wrapper AND the inner tokenizer so that
         # model.generate() (which checks the inner one) picks it up too.

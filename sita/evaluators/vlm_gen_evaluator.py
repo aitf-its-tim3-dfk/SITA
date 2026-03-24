@@ -56,7 +56,12 @@ def _build_user_messages(sample: dict) -> list[dict]:
 
 
 def _extract_images(sample: dict) -> list:
-    """Pull all PIL images from the user turn(s) of a conversation dict."""
+    """Pull all PIL images from the conversation dict (standard TRL format)."""
+    # Prefer the 'images' field (TRL standard)
+    if "images" in sample:
+        return sample["images"]
+
+    # Fallback to searching messages (legacy)
     images = []
     for msg in sample.get("messages", []):
         if msg.get("role") != "user":
