@@ -116,11 +116,17 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
         eval_rows = rows[split_idx:] if split_idx < len(rows) else []
 
         # Helper to generate rows for Dataset.from_generator
-        def gen(row_list):
+        def gen(row_list, as_paths=False):
             for row in row_list:
                 try:
-                    # Load image only when needed by the generator
-                    image = Image.open(row["image_path"]).convert("RGB")
+                    if as_paths:
+                        # Just verify it can be opened
+                        with Image.open(row["image_path"]) as img:
+                            img.verify()
+                        image_data = row["image_path"]
+                    else:
+                        # Load image directly into memory
+                        image_data = Image.open(row["image_path"]).convert("RGB")
                 except Exception as e:
                     logger.warning(f"Failed to open {row['image_path']}: {e}, skipping")
                     continue
@@ -143,19 +149,26 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
                             ],
                         },
                     ],
-                    "images": [image]
+                    "images": [image_data]
                 }
 
         # Convert to HF Dataset (required by recent TRL versions)
         try:
-            from datasets import Dataset
+            from datasets import Dataset, Image as HFImage, Sequence
             # Creating separate generators avoids materializing the whole thing in memory or doing a full pass for split
-            train_ds = Dataset.from_generator(gen, gen_kwargs={"row_list": train_rows})
-            eval_ds = Dataset.from_generator(gen, gen_kwargs={"row_list": eval_rows}) if eval_rows else None
+            # Yield string paths first, then cast to Image feature to prevent HF Datasets from losing PIL data
+            train_ds = Dataset.from_generator(gen, gen_kwargs={"row_list": train_rows, "as_paths": True})
+            train_ds = train_ds.cast_column("images", Sequence(HFImage()))
+            
+            if eval_rows:
+                eval_ds = Dataset.from_generator(gen, gen_kwargs={"row_list": eval_rows, "as_paths": True})
+                eval_ds = eval_ds.cast_column("images", Sequence(HFImage()))
+            else:
+                eval_ds = None
         except ImportError:
             logger.warning("datasets library not found. Falling back to list-based loading (slow).")
-            train_ds = list(gen(train_rows))
-            eval_ds = list(gen(eval_rows)) if eval_rows else None
+            train_ds = list(gen(train_rows, as_paths=False))
+            eval_ds = list(gen(eval_rows, as_paths=False)) if eval_rows else None
 
         logger.info(
             f"Split: {len(train_ds)} train, "
