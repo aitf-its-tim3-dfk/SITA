@@ -241,7 +241,8 @@ class UnslothVLMRFTTrainer(BaseTrainer):
                                                 {"type": "text", "text": full_gen_text}
                                             ],
                                         },
-                                    ]
+                                    ],
+                                    "images": images,
                                 }
                                 valid_sft_batch.append(new_conv)
 
