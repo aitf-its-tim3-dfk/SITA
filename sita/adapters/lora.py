@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from torch import nn
-from peft import LoraConfig, PeftModel, get_peft_model
+from peft import LoraConfig, get_peft_model
 
 from sita.core.base_adapter import BaseAdapter
 from sita.core.config import AdapterConfig
@@ -40,4 +40,6 @@ class LoRAAdapter(BaseAdapter):
         model.save_pretrained(path)
 
     def load(self, model: nn.Module, path: str) -> nn.Module:
-        return PeftModel.from_pretrained(model, path)
+        """Load adapter weights into an already-adapted model (no double-wrapping)."""
+        model.load_adapter(path, is_trainable=True)
+        return model

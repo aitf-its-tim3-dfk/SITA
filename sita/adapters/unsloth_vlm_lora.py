@@ -59,5 +59,5 @@ class UnslothVLMLoRAAdapter(BaseAdapter):
 
     def load(self, model: nn.Module, path: str) -> nn.Module:
         """Load adapter weights into an already-adapted model (no double-wrapping)."""
-        model.load_adapter(path)
+        model.load_adapter(path, is_trainable=True)
         return model
