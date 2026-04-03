@@ -83,10 +83,13 @@ def run_experiment(config: ExperimentConfig) -> dict:
         try:
             import wandb
         except ImportError:
-            logger.error("wandb is not installed. Please install with `pip install sita[wandb]`.")
+            logger.error(
+                "wandb is not installed. Please install with `pip install sita[wandb]`."
+            )
             sys.exit(1)
-            
+
         from dataclasses import asdict
+
         run_name = config.reporting.wandb_run_name or config.experiment_name
         wandb.init(
             project=config.reporting.wandb_project,
@@ -103,13 +106,21 @@ def run_experiment(config: ExperimentConfig) -> dict:
     model, tokenizer = model_loader.load(config.model)
 
     # 2. Apply adapter
+    # If warm-starting: merge pretrained adapter into base weights first,
+    # then apply the fresh adapter config on top of the merged base.
     logger.info(f"[2/5] Applying adapter: {config.adapter.name}")
+    if config.adapter.pretrained_adapter:
+        logger.info(
+            f"   Merging pretrained adapter into base weights: {config.adapter.pretrained_adapter}"
+        )
+        from peft import PeftModel
+
+        model = PeftModel.from_pretrained(model, config.adapter.pretrained_adapter)
+        model = model.merge_and_unload()
+        logger.info("   Merge complete — applying fresh adapter config")
+
     adapter = ADAPTER_REGISTRY.get(config.adapter.name)()
     model = adapter.apply(model, config.adapter)
-
-    if config.adapter.pretrained_adapter:
-        logger.info(f"   Warm-starting from pretrained adapter: {config.adapter.pretrained_adapter}")
-        model = adapter.load(model, config.adapter.pretrained_adapter)
 
     param_info = adapter.get_trainable_params(model)
     logger.info(
@@ -167,6 +178,7 @@ def run_experiment(config: ExperimentConfig) -> dict:
 
     if config.reporting.wandb:
         import wandb
+
         wandb.log({f"eval/{k}": v for k, v in metrics.items()})
         wandb.finish()
 

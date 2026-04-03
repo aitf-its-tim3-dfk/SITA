@@ -58,7 +58,5 @@ class UnslothVLMLoRAAdapter(BaseAdapter):
         model.save_pretrained(path)
 
     def load(self, model: nn.Module, path: str) -> nn.Module:
-        """Load adapter weights into an already-adapted model (no double-wrapping)."""
-        model.load_adapter(path, adapter_name="default", is_trainable=True)
-        model.set_adapter("default")
-        return model
+        from peft import PeftModel
+        return PeftModel.from_pretrained(model, path, is_trainable=True)
