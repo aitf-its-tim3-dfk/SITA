@@ -107,6 +107,10 @@ def run_experiment(config: ExperimentConfig) -> dict:
     adapter = ADAPTER_REGISTRY.get(config.adapter.name)()
     model = adapter.apply(model, config.adapter)
 
+    if config.adapter.pretrained_adapter:
+        logger.info(f"   Warm-starting from pretrained adapter: {config.adapter.pretrained_adapter}")
+        model = adapter.load(model, config.adapter.pretrained_adapter)
+
     param_info = adapter.get_trainable_params(model)
     logger.info(
         f"   Trainable params: {param_info['trainable_params']:,} / "

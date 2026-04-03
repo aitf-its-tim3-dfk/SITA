@@ -29,6 +29,7 @@ class AdapterConfig:
 
     name: str  # registry key, e.g. "lora", "qlora", "prefix_tuning"
     kwargs: dict[str, Any] = field(default_factory=dict)
+    pretrained_adapter: str | None = None  # path to warm-start from a saved adapter
 
 
 @dataclass
