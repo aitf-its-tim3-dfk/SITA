@@ -105,6 +105,7 @@ class VLMGenEvaluator(BaseEvaluator):
         bert_model_name = kwargs.get("bert_model", "bert-base-multilingual-cased")
         batch_size = int(kwargs.get("batch_size", 1))
         num_workers = int(kwargs.get("num_workers", 0))
+        enable_thinking = kwargs.get("enable_thinking", False)
 
         # Switch model to inference mode (Unsloth optimization)
         try:
@@ -158,6 +159,7 @@ class VLMGenEvaluator(BaseEvaluator):
                     user_msgs,
                     add_generation_prompt=True,
                     tokenize=False,
+                    enable_thinking=enable_thinking,
                 )
 
                 texts.append(input_text)

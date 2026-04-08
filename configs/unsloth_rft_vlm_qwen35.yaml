@@ -74,3 +74,4 @@ evaluation:
     bert_model: bert-base-multilingual-cased
     batch_size: 4
     num_workers: 4
+    enable_thinking: true
