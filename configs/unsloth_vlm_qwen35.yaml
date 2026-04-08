@@ -33,8 +33,8 @@ adapter:
 dataset:
   name: dfk_vlm_dataset_v1
   kwargs:
-    data_dir: samples/dataset
-    csv_file: metadata-updt.csv
+    data_dir: dataset
+    csv_file: images.csv
     train_ratio: 0.9
 
 training:

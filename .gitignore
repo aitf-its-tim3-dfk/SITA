@@ -1,5 +1,7 @@
 # Complying w/ NDA lol
 samples/*
+dataset/*
+TIM_3_DFK_AITF.zip
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 import csv
 import logging
+import random
 from pathlib import Path
 from typing import Any
 
@@ -15,15 +17,60 @@ from sita.core.registry import DATASET_REGISTRY
 
 logger = logging.getLogger("sita.datasets.dfk_vlm_dataset")
 
+# ---------------------------------------------------------------------------
+# CSV format identifiers
+# ---------------------------------------------------------------------------
+_FORMAT_LEGACY = "legacy"  # columns: image_filename, analisis_pelanggaran, label
+_FORMAT_IMAGES = "images"  # columns: title, link, text, img_path, label
+
+
+def _detect_csv_format(fieldnames: list[str]) -> str:
+    """Auto-detect which CSV schema we're looking at."""
+    if "image_filename" in fieldnames:
+        return _FORMAT_LEGACY
+    if "img_path" in fieldnames:
+        return _FORMAT_IMAGES
+    raise ValueError(
+        f"Unrecognised CSV columns: {fieldnames}. "
+        f"Expected either 'image_filename' (legacy) or 'img_path' (images) column."
+    )
+
+
+def _parse_img_path_field(raw: str) -> list[str]:
+    """Parse the ``img_path`` column which is a stringified Python list.
+
+    Examples::
+
+        "['images/fakta/dfakta_0.jpg']"
+        "['images/fakta/kfakta_0_0.jpg', 'images/fakta/kfakta_0_1.png']"
+    """
+    try:
+        parsed = ast.literal_eval(raw)
+    except (ValueError, SyntaxError):
+        # fall back: strip brackets and split on comma
+        stripped = raw.strip("[] '\"")
+        parsed = [s.strip().strip("'\"") for s in stripped.split(",") if s.strip()]
+
+    if isinstance(parsed, str):
+        parsed = [parsed]
+    return parsed
+
 
 @DATASET_REGISTRY.register("dfk_vlm_dataset_v1")
 class DFKVLMDatasetV1(BaseDatasetLoader):
     """Load the DFK vision dataset (V1) from a local directory.
 
-    Expects a directory with:
-      - A CSV file (``csv_file``) with columns: ``image_filename``,
-        ``analisis_pelanggaran``, ``label``
-      - An ``images/`` subdirectory containing the referenced image files
+    Supports **two CSV formats** (auto-detected from column headers):
+
+    **Legacy format** (``metadata-updt.csv``):
+      Columns: ``image_filename``, ``analisis_pelanggaran``, ``label``
+      Images live in ``<data_dir>/images/<filename>``
+
+    **Images format** (``images.csv``):
+      Columns: ``title``, ``link``, ``text``, ``img_path``, ``label``
+      ``img_path`` is a stringified Python list of relative paths, e.g.
+      ``['images/fakta/dfakta_0.jpg']``.  Paths are resolved relative to
+      ``data_dir``.  If a row has multiple images only the first is used.
 
     Each row is converted into a multi-turn conversation suitable for
     Unsloth vision fine-tuning::
@@ -35,7 +82,7 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
 
     Config kwargs:
         - ``data_dir`` (str): path to dataset directory (required)
-        - ``csv_file`` (str): CSV filename, default ``metadata-updt.csv``
+        - ``csv_file`` (str): CSV filename, default ``images.csv``
         - ``instruction`` (str): system instruction for the user prompt
         - ``train_ratio`` (float): fraction of data for training, default 0.9
         - ``seed`` (int): shuffle seed, default 42
@@ -46,16 +93,71 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
         dataset:
           name: dfk_vlm_dataset_v1
           kwargs:
-            data_dir: samples/dataset
-            csv_file: metadata-updt.csv
+            data_dir: dataset
+            csv_file: images.csv
             train_ratio: 0.9
     """
 
-    def load(self, config: DatasetConfig, tokenizer: Any) -> tuple[list[dict], list[dict] | None]:
+    # Row parsers per format
+    @staticmethod
+    def _parse_row_legacy(row: dict, images_dir: Path) -> dict | None:
+        """Parse a row from the legacy CSV format."""
+        filename = row.get("image_filename", "").strip()
+        label = row.get("label", "").strip()
+        analisis = row.get("analisis_pelanggaran", "").strip()
+
+        if not filename or not label:
+            return None
+
+        img_path = images_dir / filename
+        if not img_path.exists():
+            logger.warning("Image not found, skipping: %s", img_path)
+            return None
+
+        return {
+            "image_path": str(img_path),
+            "label": label,
+            "analisis": analisis,
+        }
+
+    @staticmethod
+    def _parse_row_images(row: dict, data_dir: Path) -> dict | None:
+        """Parse a row from the images CSV format."""
+        raw_paths = row.get("img_path", "").strip()
+        label = row.get("label", "").strip()
+        text = row.get("text", "").strip()
+
+        if not raw_paths or not label:
+            return None
+
+        paths = _parse_img_path_field(raw_paths)
+        if not paths:
+            return None
+
+        # use first image only (multi-image rows exist but VLM expects one)
+        rel_path = paths[0]
+        img_path = data_dir / rel_path
+        if not img_path.exists():
+            logger.warning("Image not found, skipping: %s", img_path)
+            return None
+
+        # use text as the analysis
+        analisis = text
+
+        return {
+            "image_path": str(img_path),
+            "label": label,
+            "analisis": analisis,
+        }
+
+    # Main load
+    def load(
+        self, config: DatasetConfig, tokenizer: Any
+    ) -> tuple[list[dict], list[dict] | None]:
         kwargs = dict(config.kwargs)
 
         data_dir = Path(kwargs.pop("data_dir"))
-        csv_file = kwargs.pop("csv_file", "metadata-updt.csv")
+        csv_file = kwargs.pop("csv_file", "images.csv")
         instruction = kwargs.pop(
             "instruction",
             (
@@ -70,65 +172,59 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
         max_samples = kwargs.pop("max_samples", None)
 
         csv_path = data_dir / csv_file
-        images_dir = data_dir / "images"
 
         if not csv_path.exists():
             raise FileNotFoundError(f"CSV not found: {csv_path}")
-        if not images_dir.exists():
-            raise FileNotFoundError(f"Images directory not found: {images_dir}")
 
-        # Parse CSV
-        rows = []
+        # Parse CSV, auto-detect format from header row
+        rows: list[dict] = []
         with open(csv_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
-            for row in reader:
-                filename = row.get("image_filename", "").strip()
-                label = row.get("label", "").strip()
-                analisis = row.get("analisis_pelanggaran", "").strip()
+            fmt = _detect_csv_format(list(reader.fieldnames or []))
+            logger.info("Detected CSV format: %s (%s)", fmt, csv_path.name)
 
-                if not filename or not label:
-                    continue
+            images_dir = data_dir / "images"  # only needed for legacy
 
-                img_path = images_dir / filename
-                if not img_path.exists():
-                    logger.warning(f"Image not found, skipping: {img_path}")
-                    continue
+            for raw_row in reader:
+                if fmt == _FORMAT_LEGACY:
+                    if not images_dir.exists():
+                        raise FileNotFoundError(
+                            f"Images directory not found: {images_dir}"
+                        )
+                    parsed = self._parse_row_legacy(raw_row, images_dir)
+                else:
+                    parsed = self._parse_row_images(raw_row, data_dir)
 
-                rows.append({
-                    "image_path": str(img_path),
-                    "label": label,
-                    "analisis": analisis,
-                })
+                if parsed is not None:
+                    rows.append(parsed)
 
-        logger.info(f"Loaded {len(rows)} valid samples from {csv_path}")
+        logger.info("Loaded %d valid samples from %s", len(rows), csv_path)
 
         if max_samples is not None:
             rows = rows[: int(max_samples)]
 
         # Shuffle deterministically
-        import random
         rng = random.Random(seed)
         rng.shuffle(rows)
 
-        # Split metadata rows FIRST to avoid train_test_split overhead on generators
+        # Split
         split_idx = int(len(rows) * train_ratio)
         train_rows = rows[:split_idx]
         eval_rows = rows[split_idx:] if split_idx < len(rows) else []
 
-        # Helper to generate rows for Dataset.from_generator
-        def gen(row_list, as_paths=False):
+        def gen(row_list: list[dict], as_paths: bool = False):
             for row in row_list:
                 try:
                     if as_paths:
-                        # Just verify it can be opened
                         with Image.open(row["image_path"]) as img:
                             img.verify()
                         image_data = row["image_path"]
                     else:
-                        # Load image directly into memory
                         image_data = Image.open(row["image_path"]).convert("RGB")
                 except Exception as e:
-                    logger.warning(f"Failed to open {row['image_path']}: {e}, skipping")
+                    logger.warning(
+                        "Failed to open %s: %s, skipping", row["image_path"], e
+                    )
                     continue
 
                 answer = f"Label: {row['label']}\n\nAnalisis: {row['analisis']}"
@@ -149,30 +245,36 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
                             ],
                         },
                     ],
-                    "images": [image_data]
+                    "images": [image_data],
                 }
 
-        # Convert to HF Dataset (required by recent TRL versions)
+        # Build HF Datasets
         try:
             from datasets import Dataset, Image as HFImage, Sequence
-            # Creating separate generators avoids materializing the whole thing in memory or doing a full pass for split
-            # Yield string paths first, then cast to Image feature to prevent HF Datasets from losing PIL data
-            train_ds = Dataset.from_generator(gen, gen_kwargs={"row_list": train_rows, "as_paths": True})
+
+            train_ds = Dataset.from_generator(
+                gen, gen_kwargs={"row_list": train_rows, "as_paths": True}
+            )
             train_ds = train_ds.cast_column("images", Sequence(HFImage()))
-            
+
             if eval_rows:
-                eval_ds = Dataset.from_generator(gen, gen_kwargs={"row_list": eval_rows, "as_paths": True})
+                eval_ds = Dataset.from_generator(
+                    gen, gen_kwargs={"row_list": eval_rows, "as_paths": True}
+                )
                 eval_ds = eval_ds.cast_column("images", Sequence(HFImage()))
             else:
                 eval_ds = None
         except ImportError:
-            logger.warning("datasets library not found. Falling back to list-based loading (slow).")
+            logger.warning(
+                "datasets library not found. Falling back to list-based loading (slow)."
+            )
             train_ds = list(gen(train_rows, as_paths=False))
             eval_ds = list(gen(eval_rows, as_paths=False)) if eval_rows else None
 
         logger.info(
-            f"Split: {len(train_ds)} train, "
-            f"{len(eval_ds) if eval_ds else 0} eval"
+            "Split: %d train, %d eval",
+            len(train_ds),
+            len(eval_ds) if eval_ds else 0,
         )
 
         return train_ds, eval_ds
