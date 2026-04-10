@@ -126,6 +126,7 @@ class UnslothVLMRFTTrainer(BaseTrainer):
         for epoch in range(config.num_epochs):
             epoch_loss = 0.0
             total_valid_samples = 0
+            total_candidates = 0
 
             progress = tqdm(dataloader, desc=f"Epoch {epoch + 1}/{config.num_epochs}")
 
@@ -247,10 +248,23 @@ class UnslothVLMRFTTrainer(BaseTrainer):
                                 valid_sft_batch.append(new_conv)
 
                 # --- 2. TRAINING PHASE ---
+                n_candidates = len(prompts_text) * num_samples
+                total_candidates += n_candidates
+                total_valid_samples += len(valid_sft_batch)
+                accept_rate = (
+                    total_valid_samples / total_candidates * 100
+                    if total_candidates > 0
+                    else 0.0
+                )
+
+                # Always update progress bar (even when 0 valid)
+                progress.set_postfix(
+                    accept=f"{accept_rate:.1f}%",
+                    valids=f"{total_valid_samples}/{total_candidates}",
+                )
+
                 if len(valid_sft_batch) == 0:
                     continue  # No valid reasoning traces found in this batch
-
-                total_valid_samples += len(valid_sft_batch)
 
                 FastVisionModel.for_training(model)
                 model.train()
@@ -295,7 +309,9 @@ class UnslothVLMRFTTrainer(BaseTrainer):
                     lr = optimizer.param_groups[0]["lr"]
                     _loss_val = loss.item() * config.gradient_accumulation_steps
                     progress.set_postfix(
-                        loss=f"{_loss_val:.4f}", valids=len(valid_sft_batch)
+                        loss=f"{_loss_val:.4f}",
+                        accept=f"{accept_rate:.1f}%",
+                        valids=f"{total_valid_samples}/{total_candidates}",
                     )
 
                     if use_wandb:
@@ -307,6 +323,7 @@ class UnslothVLMRFTTrainer(BaseTrainer):
                                 "train/learning_rate": lr,
                                 "train/epoch": epoch + (step + 1) / len(dataloader),
                                 "train/valid_samples": len(valid_sft_batch),
+                                "train/accept_rate": accept_rate,
                             },
                             step=global_step,
                         )
