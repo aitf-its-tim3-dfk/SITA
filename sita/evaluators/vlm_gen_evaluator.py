@@ -278,7 +278,7 @@ class VLMGenEvaluator(BaseEvaluator):
             gt, pred, average="weighted", zero_division=0
         )
 
-        return {
+        metrics: dict[str, float] = {
             "cls_accuracy": acc,
             "cls_precision_macro": prec,
             "cls_recall_macro": rec,
@@ -287,6 +287,20 @@ class VLMGenEvaluator(BaseEvaluator):
             "cls_recall_weighted": w_rec,
             "cls_f1_weighted": w_f1,
         }
+
+        # Per-class breakdown
+        all_labels = sorted(set(gt) | set(pred))
+        pc_prec, pc_rec, pc_f1, pc_sup = precision_recall_fscore_support(
+            gt, pred, labels=all_labels, average=None, zero_division=0
+        )
+        for label, p, r, f, s in zip(all_labels, pc_prec, pc_rec, pc_f1, pc_sup):
+            safe = label.lower().replace(" ", "_")
+            metrics[f"cls_{safe}_precision"] = p
+            metrics[f"cls_{safe}_recall"] = r
+            metrics[f"cls_{safe}_f1"] = f
+            metrics[f"cls_{safe}_support"] = int(s)
+
+        return metrics
 
     @staticmethod
     def _compute_bertscore(
