@@ -122,6 +122,7 @@ class UnslothVLMRFTTrainer(BaseTrainer):
         )
 
         global_step = 0
+        last_loss_val = None
 
         for epoch in range(config.num_epochs):
             epoch_loss = 0.0
@@ -258,10 +259,13 @@ class UnslothVLMRFTTrainer(BaseTrainer):
                 )
 
                 # Always update progress bar (even when 0 valid)
-                progress.set_postfix(
+                postfix = dict(
                     accept=f"{accept_rate:.1f}%",
                     valids=f"{total_valid_samples}/{total_candidates}",
                 )
+                if last_loss_val is not None:
+                    postfix["loss"] = f"{last_loss_val:.4f}"
+                progress.set_postfix(**postfix)
 
                 if len(valid_sft_batch) == 0:
                     continue  # No valid reasoning traces found in this batch
@@ -308,6 +312,7 @@ class UnslothVLMRFTTrainer(BaseTrainer):
                 if global_step % config.logging_steps == 0:
                     lr = optimizer.param_groups[0]["lr"]
                     _loss_val = loss.item() * config.gradient_accumulation_steps
+                    last_loss_val = _loss_val
                     progress.set_postfix(
                         loss=f"{_loss_val:.4f}",
                         accept=f"{accept_rate:.1f}%",
