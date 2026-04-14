@@ -27,12 +27,16 @@ logger = logging.getLogger("sita.evaluators.vlm_gen_evaluator")
 # Parsing helpers
 # ---------------------------------------------------------------------------
 
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 _LABEL_RE = re.compile(r"Label\s*:\s*(.+?)(?:\n|$)", re.IGNORECASE)
 _ANALISIS_RE = re.compile(r"Analisis\s*:\s*(.+)", re.IGNORECASE | re.DOTALL)
 
 
 def _parse_response(text: str) -> tuple[str, str]:
     """Extract (label, analisis) from a generated / ground-truth response."""
+    # Strip thinking blocks so regexes only match the actual answer
+    text = _THINK_RE.sub("", text).strip()
+
     label_m = _LABEL_RE.search(text)
     label = label_m.group(1).strip() if label_m else ""
 
