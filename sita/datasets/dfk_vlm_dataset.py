@@ -125,6 +125,8 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
         """Parse a row from the images CSV format."""
         raw_paths = row.get("img_path", "").strip()
         label = row.get("label", "").strip()
+        analisis = row.get("analisis", "").strip() or row.get("text", "").strip()
+        title = row.get("title", "").strip()
         text = row.get("text", "").strip()
 
         if not raw_paths or not label:
@@ -141,13 +143,12 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
             logger.warning("Image not found, skipping: %s", img_path)
             return None
 
-        # use text as the analysis
-        analisis = text
-
         return {
             "image_path": str(img_path),
             "label": label,
             "analisis": analisis,
+            "title": title,
+            "text": text,
         }
 
     # Main load
@@ -227,17 +228,26 @@ class DFKVLMDatasetV1(BaseDatasetLoader):
                     )
                     continue
 
+                # Build user content: instruction + optional context + image
+                user_content = [{"type": "text", "text": instruction}]
+
+                context_parts = []
+                if row.get("title"):
+                    context_parts.append(f"Judul: {row['title']}")
+                if row.get("text"):
+                    context_parts.append(f"Konteks: {row['text']}")
+                if context_parts:
+                    user_content.append(
+                        {"type": "text", "text": "\n".join(context_parts)}
+                    )
+
+                user_content.append({"type": "image"})
+
                 answer = f"Label: {row['label']}\n\nAnalisis: {row['analisis']}"
 
                 yield {
                     "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": instruction},
-                                {"type": "image"},
-                            ],
-                        },
+                        {"role": "user", "content": user_content},
                         {
                             "role": "assistant",
                             "content": [
