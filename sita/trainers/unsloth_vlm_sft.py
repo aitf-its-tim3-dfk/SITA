@@ -110,20 +110,32 @@ class UnslothVLMSFTTrainer(BaseTrainer):
             save_total_limit=2,
             seed=config.extra.pop("seed", 3407),
             report_to=report_to,
-            # Vision SFT specific — let the data collator handle seq length
             dataset_text_field="",
             dataset_kwargs={"skip_prepare_dataset": True},
             remove_unused_columns=False,
             **{k: v for k, v in config.extra.items()},
         )
 
+        data_collator_kwargs = {
+            "train_on_responses_only": train_on_responses_only,
+            "instruction_part": instruction_part,
+            "response_part": response_part,
+        }
+
+        # Pass max_seq_length if defined in training config
+        max_seq_length = config.extra.get(
+            "max_seq_length", config.extra.get("max_length")
+        )
+        if max_seq_length is not None:
+            data_collator_kwargs["max_seq_length"] = max_seq_length
+
+        # Extract explicit collator kwargs to prevent conflicts
+        collator_kwargs = trainer_kwargs.pop("collator_kwargs", {})
+        data_collator_kwargs.update(collator_kwargs)
+
         # Build data collator with response-only masking
         data_collator = UnslothVisionDataCollator(
-            model,
-            tokenizer,
-            train_on_responses_only=train_on_responses_only,
-            instruction_part=instruction_part,
-            response_part=response_part,
+            model, tokenizer, **data_collator_kwargs
         )
 
         # Check SFTTrainer signature for 'tokenizer' vs 'processing_class' (TRL 0.12.0+)
