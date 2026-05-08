@@ -29,12 +29,14 @@ logger = logging.getLogger("sita.datasets.dfk_vlm_dataset_v2")
 # ---------------------------------------------------------------------------
 # Label whitelist (for sanity-checking rows)
 # ---------------------------------------------------------------------------
-VALID_LABELS = frozenset({
-    "netral",
-    "disinformasi",
-    "ujaran kebencian",
-    "fitnah",
-})
+VALID_LABELS = frozenset(
+    {
+        "netral",
+        "disinformasi",
+        "ujaran kebencian",
+        "fitnah",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Column names in the v2 CSV
@@ -89,7 +91,7 @@ def _parse_row(row: dict[str, str], data_dir: Path) -> dict | None:
     Returns None if the row should be skipped (missing data, bad image, etc.).
     """
     raw_img = (row.get(_COL_IMG) or "").strip()
-    label = (row.get(_COL_LABEL) or "").strip()
+    label = (row.get(_COL_LABEL) or "").strip().lower()
     analisis = (row.get(_COL_ANALISIS) or "").strip()
 
     if not raw_img or not label:
@@ -221,16 +223,23 @@ class DFKVLMDatasetV2(BaseDatasetLoader):
             raw_train = _read_csv(train_path)
             raw_val = _read_csv(val_path)
 
-            train_rows = [r for r in (
-                _parse_row(row, data_dir) for row in raw_train
-            ) if r is not None]
-            eval_rows = [r for r in (
-                _parse_row(row, data_dir) for row in raw_val
-            ) if r is not None]
+            train_rows = [
+                r
+                for r in (_parse_row(row, data_dir) for row in raw_train)
+                if r is not None
+            ]
+            eval_rows = [
+                r
+                for r in (_parse_row(row, data_dir) for row in raw_val)
+                if r is not None
+            ]
 
             logger.info(
                 "Fixed splits — train: %d rows from %s, val: %d rows from %s",
-                len(train_rows), train_csv, len(eval_rows), val_csv,
+                len(train_rows),
+                train_csv,
+                len(eval_rows),
+                val_csv,
             )
 
         else:
@@ -242,13 +251,13 @@ class DFKVLMDatasetV2(BaseDatasetLoader):
                 raise FileNotFoundError(f"CSV not found: {csv_path}")
 
             raw_rows = _read_csv(csv_path)
-            all_rows = [r for r in (
-                _parse_row(row, data_dir) for row in raw_rows
-            ) if r is not None]
+            all_rows = [
+                r
+                for r in (_parse_row(row, data_dir) for row in raw_rows)
+                if r is not None
+            ]
 
-            logger.info(
-                "Loaded %d valid samples from %s", len(all_rows), csv_path.name
-            )
+            logger.info("Loaded %d valid samples from %s", len(all_rows), csv_path.name)
 
             # deterministic shuffle then split
             rng = random.Random(seed)
