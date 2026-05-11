@@ -61,20 +61,41 @@ def _build_user_messages(sample: dict) -> list[dict]:
     return [m for m in sample.get("messages", []) if m.get("role") != "assistant"]
 
 
-def _extract_images(sample: dict) -> list:
+def _resize_image(img, max_size: int) -> "PIL.Image.Image":
+    """Resize an image so its longest side is at most *max_size* px.
+
+    Uses ``Image.thumbnail`` which preserves aspect ratio and never
+    upscales.  This prevents the Pixtral vision encoder from producing
+    an unmanageable number of patches on very-high-res inputs.
+    """
+    from PIL import Image as PILImage
+
+    if isinstance(img, str):
+        img = PILImage.open(img).convert("RGB")
+    if not hasattr(img, "thumbnail"):
+        return img  # not a PIL image, leave as-is
+    img = img.copy()  # don't mutate the dataset's cached image
+    img.thumbnail((max_size, max_size), PILImage.LANCZOS)
+    return img
+
+
+def _extract_images(sample: dict, max_image_size: int | None = None) -> list:
     """Pull all PIL images from the conversation dict (standard TRL format)."""
     # Prefer the 'images' field (TRL standard)
     if "images" in sample:
-        return sample["images"]
+        images = list(sample["images"])
+    else:
+        # Fallback to searching messages (legacy)
+        images = []
+        for msg in sample.get("messages", []):
+            if msg.get("role") != "user":
+                continue
+            for part in msg.get("content", []):
+                if part.get("type") == "image" and "image" in part:
+                    images.append(part["image"])
 
-    # Fallback to searching messages (legacy)
-    images = []
-    for msg in sample.get("messages", []):
-        if msg.get("role") != "user":
-            continue
-        for part in msg.get("content", []):
-            if part.get("type") == "image" and "image" in part:
-                images.append(part["image"])
+    if max_image_size is not None:
+        images = [_resize_image(im, max_image_size) for im in images]
     return images
 
 
@@ -110,6 +131,10 @@ class VLMGenEvaluator(BaseEvaluator):
         batch_size = int(kwargs.get("batch_size", 1))
         num_workers = int(kwargs.get("num_workers", 0))
         enable_thinking = kwargs.get("enable_thinking", False)
+        max_image_size = kwargs.get("max_image_size", 1024)  # cap longest side (px)
+        if max_image_size is not None:
+            max_image_size = int(max_image_size)
+            logger.info(f"Capping eval images to {max_image_size}px max dimension.")
 
         # Switch model to inference mode (Unsloth optimization)
         try:
@@ -157,7 +182,7 @@ class VLMGenEvaluator(BaseEvaluator):
 
                 # Build input — user turn only
                 user_msgs = _build_user_messages(sample)
-                images = _extract_images(sample)
+                images = _extract_images(sample, max_image_size=max_image_size)
 
                 input_text = tokenizer.apply_chat_template(
                     user_msgs,
