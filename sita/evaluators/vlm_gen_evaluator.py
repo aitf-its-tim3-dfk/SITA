@@ -172,7 +172,7 @@ class VLMGenEvaluator(BaseEvaluator):
 
         for batch in tqdm(dataloader, desc="Generating"):
             texts = []
-            flat_images = []
+            batch_images: list[list] = []
             valid_gts = []
 
             for sample in batch:
@@ -192,21 +192,27 @@ class VLMGenEvaluator(BaseEvaluator):
                 )
 
                 texts.append(input_text)
-                if images:
-                    flat_images.extend(images)
+                batch_images.append(images if images else [])
                 valid_gts.append((gt_label, gt_analisis))
 
             if not texts:
                 continue
 
             # Tokenize with image processing — pass images to the processor
+            # Images must be a list-of-lists so each text entry gets its
+            # own image list (required by Gemma4 / multi-sample processors).
             proc_kwargs: dict[str, Any] = {
-                "text": texts if batch_size > 1 else texts[0],
+                "text": texts if len(texts) > 1 else texts[0],
                 "return_tensors": "pt",
                 "padding": True,
             }
-            if flat_images:
-                proc_kwargs["images"] = flat_images
+            has_any_images = any(imgs for imgs in batch_images)
+            if has_any_images:
+                if len(texts) > 1:
+                    proc_kwargs["images"] = batch_images
+                else:
+                    # Single sample, pass flat list directly
+                    proc_kwargs["images"] = batch_images[0]
 
             inputs = tokenizer(**proc_kwargs).to(device)
 
