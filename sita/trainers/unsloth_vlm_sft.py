@@ -84,6 +84,7 @@ class UnslothVLMSFTTrainer(BaseTrainer):
                 config.warmup_ratio * config.extra.get("max_steps", 100)
             )
 
+        resume_from_checkpoint = config.extra.pop("resume_from_checkpoint", False)
         use_bf16 = config.extra.pop("bf16", None)
         use_fp16 = config.extra.pop("fp16", None)
 
@@ -155,8 +156,12 @@ class UnslothVLMSFTTrainer(BaseTrainer):
 
         trainer = SFTTrainer(**sft_trainer_kwargs)
 
+        # Resume from latest checkpoint if requested
+        if resume_from_checkpoint:
+            logger.info(f"Resuming from latest checkpoint in {config.output_dir}...")
+
         logger.info("Starting VLM SFT training...")
-        trainer.train()
+        trainer.train(resume_from_checkpoint=resume_from_checkpoint)
         logger.info("Training complete.")
 
         return model
