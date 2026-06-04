@@ -1,9 +1,13 @@
-"""VLM generative evaluator — classification metrics + BERTScore.
+"""VLM generative evaluator — classification metrics + BERTScore + ROUGE-L.
 
 Runs model.generate() on each eval sample, parses the predicted text for
 ``Label`` and ``Analisis`` fields, then computes:
   - Classification: accuracy, macro precision / recall / F1
   - BERTScore: average P / R / F1 on the analysis text
+  - ROUGE-L: precision / recall / F1 on the analysis text
+
+Which text-similarity metrics to compute is controlled by the ``metrics``
+kwarg (default: ``["bertscore"]`` for backwards compatibility).
 """
 
 from __future__ import annotations
@@ -106,7 +110,7 @@ def _extract_images(sample: dict, max_image_size: int | None = None) -> list:
 
 @EVALUATOR_REGISTRY.register("vlm_gen")
 class VLMGenEvaluator(BaseEvaluator):
-    """Generate predictions and compute classification + BERTScore metrics.
+    """Generate predictions and compute classification + BERTScore/ROUGE metrics.
 
     Example YAML::
 
@@ -115,7 +119,10 @@ class VLMGenEvaluator(BaseEvaluator):
           kwargs:
             max_new_tokens: 512
             temperature: 0.0
-            bert_model: bert-base-multilingual-cased
+            metrics:                              # pick one or both
+              - bertscore
+              - rouge
+            bert_model: bert-base-multilingual-cased  # only for bertscore
     """
 
     def evaluate(
@@ -128,6 +135,10 @@ class VLMGenEvaluator(BaseEvaluator):
         max_new_tokens = int(kwargs.get("max_new_tokens", 512))
         temperature = float(kwargs.get("temperature", 0.0))
         bert_model_name = kwargs.get("bert_model", "bert-base-multilingual-cased")
+        requested_metrics = kwargs.get("metrics", ["bertscore"])
+        if isinstance(requested_metrics, str):
+            requested_metrics = [requested_metrics]
+        requested_metrics = [m.lower().strip() for m in requested_metrics]
         batch_size = int(kwargs.get("batch_size", 1))
         num_workers = int(kwargs.get("num_workers", 0))
         enable_thinking = kwargs.get("enable_thinking", False)
@@ -280,10 +291,15 @@ class VLMGenEvaluator(BaseEvaluator):
         # ---- Classification metrics ----
         metrics = self._compute_classification(gt_labels, pred_labels)
 
-        # ---- BERTScore ----
-        metrics.update(
-            self._compute_bertscore(gt_analyses, pred_analyses, bert_model_name)
-        )
+        # ---- Text-similarity metrics (configurable) ----
+        if "bertscore" in requested_metrics:
+            metrics.update(
+                self._compute_bertscore(gt_analyses, pred_analyses, bert_model_name)
+            )
+        if "rouge" in requested_metrics:
+            metrics.update(
+                self._compute_rouge(gt_analyses, pred_analyses)
+            )
 
         # Log summary
         for k, v in sorted(metrics.items()):
@@ -372,4 +388,40 @@ class VLMGenEvaluator(BaseEvaluator):
             "bertscore_precision": P.mean().item(),
             "bertscore_recall": R.mean().item(),
             "bertscore_f1": F1.mean().item(),
+        }
+
+    @staticmethod
+    def _compute_rouge(
+        gt: list[str],
+        pred: list[str],
+    ) -> dict[str, float]:
+        """Compute ROUGE-L on (ground-truth, prediction) analysis pairs."""
+        pairs = [(g, p) for g, p in zip(gt, pred) if g and p]
+        if not pairs:
+            logger.warning("No valid analysis pairs for ROUGE.")
+            return {}
+
+        gt_filtered, pred_filtered = zip(*pairs)
+
+        try:
+            from rouge_score import rouge_scorer
+        except ImportError:
+            logger.warning("rouge-score not installed — skipping ROUGE metrics. "
+                           "Install with: pip install rouge-score")
+            return {}
+
+        logger.info(f"Computing ROUGE-L on {len(gt_filtered)} pairs…")
+        scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=False)
+
+        precisions, recalls, f1s = [], [], []
+        for ref, hyp in zip(gt_filtered, pred_filtered):
+            scores = scorer.score(ref, hyp)
+            precisions.append(scores["rougeL"].precision)
+            recalls.append(scores["rougeL"].recall)
+            f1s.append(scores["rougeL"].fmeasure)
+
+        return {
+            "rouge_l_precision": sum(precisions) / len(precisions),
+            "rouge_l_recall": sum(recalls) / len(recalls),
+            "rouge_l_f1": sum(f1s) / len(f1s),
         }
