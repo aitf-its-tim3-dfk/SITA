@@ -35,7 +35,7 @@ logger = logging.getLogger("sita.datasets.dfk_text_dataset")
 # ---------------------------------------------------------------------------
 # Label whitelist (after remapping)
 # ---------------------------------------------------------------------------
-VALID_LABELS = frozenset(
+VALID_LABELS_MERGED = frozenset(
     {
         "netral",
         "disinformasi",
@@ -44,10 +44,29 @@ VALID_LABELS = frozenset(
     }
 )
 
-# Raw label → canonical label
+VALID_LABELS_RAW = frozenset(
+    {
+        "non_dfk",
+        "fakta",
+        "disinformasi",
+        "fitnah",
+        "ujaran kebencian",
+    }
+)
+
+# Raw label → canonical label (merged)
 _LABEL_MAP: dict[str, str] = {
     "non_dfk": "netral",
     "fakta": "netral",
+    "disinformasi": "disinformasi",
+    "fitnah": "fitnah",
+    "ujaran_kebencian": "ujaran kebencian",
+}
+
+# Raw label → canonical label (unmerged / raw)
+_LABEL_MAP_RAW: dict[str, str] = {
+    "non_dfk": "non_dfk",
+    "fakta": "fakta",
     "disinformasi": "disinformasi",
     "fitnah": "fitnah",
     "ujaran_kebencian": "ujaran kebencian",
@@ -58,6 +77,9 @@ _OUTPUT_LABEL_MAP: dict[str, str] = {
     "Non-DFK": "Netral",
     "Fakta": "Netral",
 }
+
+# No-op map: keep original label text as-is
+_OUTPUT_LABEL_MAP_RAW: dict[str, str] = {}
 
 # ---------------------------------------------------------------------------
 # Column names in the v1 CSV
@@ -84,9 +106,14 @@ def _read_csv(csv_path: Path) -> list[dict[str, str]]:
         return list(reader)
 
 
-def _remap_label(raw_label: str) -> str:
-    """Map a raw label to the canonical 4-class label set."""
-    return _LABEL_MAP.get(raw_label, raw_label)
+def _remap_label(raw_label: str, merge: bool = True) -> str:
+    """Map a raw label to the canonical label set.
+
+    When *merge* is True (default), collapses to 4 classes.
+    When False, keeps all 5 original classes.
+    """
+    lmap = _LABEL_MAP if merge else _LABEL_MAP_RAW
+    return lmap.get(raw_label, raw_label)
 
 
 def _parse_output_first_line(output: str) -> tuple[str, str]:
@@ -117,12 +144,16 @@ def _parse_output_first_line(output: str) -> tuple[str, str]:
     return "", first_line
 
 
-def _remap_output_label(label_text: str) -> str:
-    """Remap label text that appears in the output (e.g. 'Non-DFK' → 'Netral')."""
-    return _OUTPUT_LABEL_MAP.get(label_text, label_text)
+def _remap_output_label(label_text: str, merge: bool = True) -> str:
+    """Remap label text that appears in the output (e.g. 'Non-DFK' → 'Netral').
+
+    When *merge* is False, the original label text is kept as-is.
+    """
+    omap = _OUTPUT_LABEL_MAP if merge else _OUTPUT_LABEL_MAP_RAW
+    return omap.get(label_text, label_text)
 
 
-def _parse_row(row: dict[str, str]) -> dict | None:
+def _parse_row(row: dict[str, str], merge_labels: bool = True) -> dict | None:
     """Parse a single CSV row into an internal sample dict.
 
     Returns None if the row should be skipped (missing data, etc.).
@@ -150,18 +181,19 @@ def _parse_row(row: dict[str, str]) -> dict | None:
         return None
 
     # ---- Remap labels ----
-    label = _remap_label(raw_label)
+    label = _remap_label(raw_label, merge=merge_labels)
 
     # Also remap the label text that will appear in the answer
-    remapped_output_label = _remap_output_label(output_label_text)
+    remapped_output_label = _remap_output_label(output_label_text, merge=merge_labels)
 
     # Validate label
-    if label not in VALID_LABELS:
+    valid = VALID_LABELS_MERGED if merge_labels else VALID_LABELS_RAW
+    if label not in valid:
         logger.warning(
             "Unknown label '%s' (raw: '%s'), expected one of %s, keeping anyway",
             label,
             raw_label,
-            VALID_LABELS,
+            valid,
         )
 
     return {
@@ -238,6 +270,7 @@ class DFKTextDataset(BaseDatasetLoader):
         train_ratio = float(kwargs.pop("train_ratio", 0.8))
         seed = int(kwargs.pop("seed", 42))
         max_samples = kwargs.pop("max_samples", None)
+        merge_labels = bool(kwargs.pop("merge_labels", True))
 
         csv_path = data_dir / csv_file
         if not csv_path.exists():
@@ -246,7 +279,7 @@ class DFKTextDataset(BaseDatasetLoader):
         raw_rows = _read_csv(csv_path)
         all_rows = [
             r
-            for r in (_parse_row(row) for row in raw_rows)
+            for r in (_parse_row(row, merge_labels=merge_labels) for row in raw_rows)
             if r is not None
         ]
 

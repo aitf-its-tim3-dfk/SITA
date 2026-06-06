@@ -55,13 +55,19 @@ _LABEL_NORMALIZE: dict[str, str] = {
 }
 
 
-def _normalize_label(label: str) -> str:
-    """Map old/variant label names to canonical form."""
+def _normalize_label(label: str, normalize: bool = True) -> str:
+    """Map old/variant label names to canonical form.
+
+    When *normalize* is False, only lowercases and cleans the label
+    without remapping (preserves the original 5-class distinctions).
+    """
     clean = label.lower().strip().rstrip(".")
+    if not normalize:
+        return clean
     return _LABEL_NORMALIZE.get(clean, clean)
 
 
-def _parse_response(text: str) -> tuple[str, str]:
+def _parse_response(text: str, normalize: bool = True) -> tuple[str, str]:
     """Extract (label, explanation) from generated / ground-truth response.
 
     Handles both formats:
@@ -81,7 +87,7 @@ def _parse_response(text: str) -> tuple[str, str]:
             label = bold_m.group(1).strip().rstrip(".")
         else:
             label = label_part.replace("Label:", "").strip().strip("*").strip(".")
-        return _normalize_label(label), penjelasan.strip()
+        return _normalize_label(label, normalize=normalize), penjelasan.strip()
 
     # Fallback: vlm_gen format (Label: xxx\nAnalisis: yyy)
     label_m = _LABEL_RE.search(text)
@@ -90,16 +96,16 @@ def _parse_response(text: str) -> tuple[str, str]:
     analisis_m = _ANALISIS_RE.search(text)
     analisis = analisis_m.group(1).strip() if analisis_m else ""
 
-    return _normalize_label(label), analisis
+    return _normalize_label(label, normalize=normalize), analisis
 
 
-def _extract_ground_truth(sample: dict) -> tuple[str, str]:
+def _extract_ground_truth(sample: dict, normalize: bool = True) -> tuple[str, str]:
     """Pull the reference answer text from a conversation dict."""
     for msg in sample.get("messages", []):
         if msg.get("role") == "assistant":
             for part in msg.get("content", []):
                 if part.get("type") == "text":
-                    return _parse_response(part["text"])
+                    return _parse_response(part["text"], normalize=normalize)
     return "", ""
 
 
@@ -150,6 +156,7 @@ class TextGenEvaluator(BaseEvaluator):
         batch_size = int(kwargs.get("batch_size", 1))
         num_workers = int(kwargs.get("num_workers", 0))
         enable_thinking = kwargs.get("enable_thinking", False)
+        normalize_labels = kwargs.get("normalize_labels", True)
 
         # Switch model to inference mode
         try:
@@ -195,7 +202,7 @@ class TextGenEvaluator(BaseEvaluator):
             valid_gts = []
 
             for sample in batch:
-                gt_label, gt_explanation = _extract_ground_truth(sample)
+                gt_label, gt_explanation = _extract_ground_truth(sample, normalize=normalize_labels)
                 if not gt_label:
                     continue
 
@@ -264,7 +271,7 @@ class TextGenEvaluator(BaseEvaluator):
 
             for (gt_label, gt_explanation), generated in zip(valid_gts, generated_texts):
                 generated = generated.strip()
-                pred_label, pred_explanation = _parse_response(generated)
+                pred_label, pred_explanation = _parse_response(generated, normalize=normalize_labels)
 
                 gt_labels.append(gt_label)
                 pred_labels.append(pred_label if pred_label else "<UNPARSED>")
