@@ -255,15 +255,23 @@ class DFKTextDataset(BaseDatasetLoader):
 
         data_dir = Path(kwargs.pop("data_dir"))
 
+        _default_instruction_merged = (
+            "Anda adalah sistem deteksi konten DFK berbasis artikel rujukan. "
+            "Tugas Anda adalah membandingkan klaim dengan artikel rujukan, "
+            "lalu mengklasifikasikan teks ke dalam salah satu label: "
+            "Netral, Disinformasi, Fitnah, atau Ujaran Kebencian. "
+            'Jawab dengan format: Label: **NamaLabel.** penjelasan: ...'
+        )
+        _default_instruction_raw = (
+            "Anda adalah sistem deteksi konten DFK berbasis artikel rujukan. "
+            "Tugas Anda adalah membandingkan klaim dengan artikel rujukan, "
+            "lalu mengklasifikasikan teks ke dalam salah satu label: "
+            "Fakta, Disinformasi, Fitnah, Ujaran Kebencian, atau Non-DFK. "
+            'Jawab dengan format: Label: **NamaLabel.** penjelasan: ...'
+        )
         instruction = kwargs.pop(
             "instruction",
-            (
-                "Anda adalah sistem deteksi konten DFK berbasis artikel rujukan. "
-                "Tugas Anda adalah membandingkan klaim dengan artikel rujukan, "
-                "lalu mengklasifikasikan teks ke dalam salah satu label: "
-                "Netral, Disinformasi, Fitnah, atau Ujaran Kebencian. "
-                'Jawab dengan format: Label: **NamaLabel.** penjelasan: ...'
-            ),
+            _default_instruction_merged if merge_labels else _default_instruction_raw,
         )
 
         csv_file = kwargs.pop("csv_file", "dfk1test.csv")
