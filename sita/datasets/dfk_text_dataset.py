@@ -254,6 +254,7 @@ class DFKTextDataset(BaseDatasetLoader):
         kwargs = dict(config.kwargs)
 
         data_dir = Path(kwargs.pop("data_dir"))
+        merge_labels = bool(kwargs.pop("merge_labels", True))
 
         _default_instruction_merged = (
             "Anda adalah sistem deteksi konten DFK berbasis artikel rujukan. "
@@ -278,7 +279,6 @@ class DFKTextDataset(BaseDatasetLoader):
         train_ratio = float(kwargs.pop("train_ratio", 0.8))
         seed = int(kwargs.pop("seed", 42))
         max_samples = kwargs.pop("max_samples", None)
-        merge_labels = bool(kwargs.pop("merge_labels", True))
 
         csv_path = data_dir / csv_file
         if not csv_path.exists():
