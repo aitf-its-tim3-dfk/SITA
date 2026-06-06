@@ -1,0 +1,49 @@
+experiment_name: dfk-vlm-dataset-v4
+
+seed: 42
+
+model:
+  name: hf_vlm
+  pretrained: llava-hf/llava-1.5-7b-hf
+  kwargs:
+    auto_class: LlavaForConditionalGeneration
+    torch_dtype: float16
+    device_map: auto
+
+adapter:
+  name: lora
+  kwargs:
+    r: 16
+    lora_alpha: 32
+    lora_dropout: 0.05
+    target_modules:
+      - q_proj
+      - v_proj
+
+dataset:
+  name: dfk_vlm_dataset_v4
+  kwargs:
+    data_dir: data/aitf-dfk3-vlm-dataset-jsonl
+    use_fixed_splits: true
+    train_file: train.json
+    val_file: val.json
+
+training:
+  output_dir: ./output/dfk_vlm_v4
+  num_epochs: 1
+  batch_size: 1
+  learning_rate: 2e-4
+  gradient_accumulation_steps: 4
+  bf16: true
+  logging_steps: 10
+  save_steps: 200
+
+trainer:
+  name: unsloth_vlm_sft
+  kwargs:
+    train_on_responses_only: true
+    instruction_part: "<|im_start|>user\n"
+    response_part: "<|im_start|>assistant\n"
+
+evaluation:
+  name: loss
