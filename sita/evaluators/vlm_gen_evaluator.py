@@ -35,6 +35,22 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 _LABEL_RE = re.compile(r"Label\s*:\s*(.+?)(?:\n|$)", re.IGNORECASE)
 _ANALISIS_RE = re.compile(r"Analisis\s*:\s*(.+)", re.IGNORECASE | re.DOTALL)
 
+# Label normalization: maps old/variant labels to canonical form.
+_LABEL_NORMALIZE: dict[str, str] = {
+    "non-dfk": "netral",
+    "non_dfk": "netral",
+    "nondfk": "netral",
+    "fakta": "netral",
+    "ujaran_kebencian": "ujaran kebencian",
+    "disinformasi_dan_ujaran_kebencian": "ujaran kebencian",
+}
+
+
+def _normalize_label(label: str) -> str:
+    """Map old/variant label names to canonical form."""
+    clean = label.lower().strip().rstrip(".")
+    return _LABEL_NORMALIZE.get(clean, clean)
+
 
 def _parse_response(text: str) -> tuple[str, str]:
     """Extract (label, analisis) from a generated / ground-truth response."""
@@ -47,7 +63,7 @@ def _parse_response(text: str) -> tuple[str, str]:
     analisis_m = _ANALISIS_RE.search(text)
     analisis = analisis_m.group(1).strip() if analisis_m else ""
 
-    return label, analisis
+    return _normalize_label(label), analisis
 
 
 def _extract_ground_truth(sample: dict) -> tuple[str, str]:

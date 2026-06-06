@@ -43,6 +43,23 @@ _BOLD_LABEL_RE = re.compile(r"\*{2}(.+?)\.?\*{2,4}")
 _LABEL_RE = re.compile(r"Label\s*:\s*(.+?)(?:\n|$)", re.IGNORECASE)
 _ANALISIS_RE = re.compile(r"Analisis\s*:\s*(.+)", re.IGNORECASE | re.DOTALL)
 
+# Label normalization: maps old/variant labels to canonical form.
+# Applied AFTER parsing, so it catches both ground truth and predictions.
+_LABEL_NORMALIZE: dict[str, str] = {
+    "non-dfk": "netral",
+    "non_dfk": "netral",
+    "nondfk": "netral",
+    "fakta": "netral",
+    "ujaran_kebencian": "ujaran kebencian",
+    "disinformasi_dan_ujaran_kebencian": "ujaran kebencian",
+}
+
+
+def _normalize_label(label: str) -> str:
+    """Map old/variant label names to canonical form."""
+    clean = label.lower().strip().rstrip(".")
+    return _LABEL_NORMALIZE.get(clean, clean)
+
 
 def _parse_response(text: str) -> tuple[str, str]:
     """Extract (label, explanation) from generated / ground-truth response.
@@ -64,7 +81,7 @@ def _parse_response(text: str) -> tuple[str, str]:
             label = bold_m.group(1).strip().rstrip(".")
         else:
             label = label_part.replace("Label:", "").strip().strip("*").strip(".")
-        return label.lower(), penjelasan.strip()
+        return _normalize_label(label), penjelasan.strip()
 
     # Fallback: vlm_gen format (Label: xxx\nAnalisis: yyy)
     label_m = _LABEL_RE.search(text)
@@ -73,7 +90,7 @@ def _parse_response(text: str) -> tuple[str, str]:
     analisis_m = _ANALISIS_RE.search(text)
     analisis = analisis_m.group(1).strip() if analisis_m else ""
 
-    return label.lower(), analisis
+    return _normalize_label(label), analisis
 
 
 def _extract_ground_truth(sample: dict) -> tuple[str, str]:
