@@ -45,11 +45,26 @@ _ANALISIS_RE = re.compile(r"Analisis\s*:\s*(.+)", re.IGNORECASE | re.DOTALL)
 
 # Label normalization: maps old/variant labels to canonical form.
 # Applied AFTER parsing, so it catches both ground truth and predictions.
-_LABEL_NORMALIZE: dict[str, str] = {
+_LABEL_NORMALIZE_MERGED: dict[str, str] = {
     "non-dfk": "netral",
     "non_dfk": "netral",
     "nondfk": "netral",
+    "bukan_dfk": "netral",
+    "bukan dfk": "netral",
     "fakta": "netral",
+    "ujaran_kebencian": "ujaran kebencian",
+    "disinformasi_dan_ujaran_kebencian": "ujaran kebencian",
+}
+
+_LABEL_NORMALIZE_RAW: dict[str, str] = {
+    "non-dfk": "non_dfk",
+    "non_dfk": "non_dfk",
+    "nondfk": "non_dfk",
+    "bukan_dfk": "non_dfk",
+    "bukan dfk": "non_dfk",
+    "fakta": "fakta",
+    "disinformasi": "disinformasi",
+    "fitnah": "fitnah",
     "ujaran_kebencian": "ujaran kebencian",
     "disinformasi_dan_ujaran_kebencian": "ujaran kebencian",
 }
@@ -63,8 +78,8 @@ def _normalize_label(label: str, normalize: bool = True) -> str:
     """
     clean = label.lower().strip().rstrip(".")
     if not normalize:
-        return clean
-    return _LABEL_NORMALIZE.get(clean, clean)
+        return _LABEL_NORMALIZE_RAW.get(clean, clean).replace("-", "_")
+    return _LABEL_NORMALIZE_MERGED.get(clean, clean)
 
 
 def _parse_response(text: str, normalize: bool = True) -> tuple[str, str]:
@@ -81,22 +96,40 @@ def _parse_response(text: str, normalize: bool = True) -> tuple[str, str]:
     parts = _PENJELASAN_SPLIT_RE.split(first_line, maxsplit=1)
     if len(parts) == 2:
         label_part, penjelasan = parts
-        # Try bold label: **Fitnah.**
-        bold_m = _BOLD_LABEL_RE.search(label_part)
-        if bold_m:
-            label = bold_m.group(1).strip().rstrip(".")
-        else:
-            label = label_part.replace("Label:", "").strip().strip("*").strip(".")
-        return _normalize_label(label, normalize=normalize), penjelasan.strip()
+    else:
+        # Fallback if "penjelasan:" is missing
+        label_part = first_line
+        penjelasan = text[len(first_line):].strip() # The rest of the text
 
-    # Fallback: vlm_gen format (Label: xxx\nAnalisis: yyy)
-    label_m = _LABEL_RE.search(text)
-    label = label_m.group(1).strip().strip("*").strip(".") if label_m else ""
+    # Try bold label: **Fitnah.**
+    bold_m = _BOLD_LABEL_RE.search(label_part)
+    if bold_m:
+        label = bold_m.group(1).strip().rstrip(".")
+        # If penjelasan is empty, maybe it's right after the bold label on the same line
+        if not penjelasan:
+            after_bold = label_part[bold_m.end():].strip()
+            if after_bold:
+                penjelasan = after_bold
+    else:
+        label = label_part.replace("Label:", "").strip().strip("*").strip(".")
+        # If there's a dot, everything after might be explanation
+        if "." in label:
+            split_label = label.split(".", 1)
+            label = split_label[0].strip()
+            if not penjelasan:
+                penjelasan = split_label[1].strip()
 
-    analisis_m = _ANALISIS_RE.search(text)
-    analisis = analisis_m.group(1).strip() if analisis_m else ""
+    if not label:
+        # Final fallback: vlm_gen format
+        label_m = _LABEL_RE.search(text)
+        label = label_m.group(1).strip().strip("*").strip(".") if label_m else ""
 
-    return _normalize_label(label, normalize=normalize), analisis
+        analisis_m = _ANALISIS_RE.search(text)
+        analisis = analisis_m.group(1).strip() if analisis_m else ""
+        if analisis:
+            penjelasan = analisis
+
+    return _normalize_label(label, normalize=normalize), penjelasan
 
 
 def _extract_ground_truth(sample: dict, normalize: bool = True) -> tuple[str, str]:
