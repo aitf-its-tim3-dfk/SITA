@@ -61,8 +61,8 @@ def main():
     )
     parser.add_argument("--base-model", required=True,
                         help="HF model ID or local path for the base model")
-    parser.add_argument("--adapter-path", required=True,
-                        help="Path to the adapter directory")
+    parser.add_argument("--adapter-path", default=None,
+                        help="Path to the adapter directory (omit to eval base model)")
     parser.add_argument("--dataset-name", default="dfk_vlm_dataset_v3",
                         help="Dataset registry key (dfk_vlm_dataset_v2 or v3)")
     parser.add_argument("--data-dir", required=True,
@@ -79,10 +79,16 @@ def main():
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--bert-model", default="bert-base-multilingual-cased",
                         help="BERT model for BERTScore (ignored if bertscore not in metrics)")
+    parser.add_argument("--evaluator", default="vlm_gen",
+                        help="Evaluator registry key (vlm_gen or vlm_captioning)")
     parser.add_argument("--enable-thinking", action="store_true",
                         help="Enable thinking mode for generation")
     parser.add_argument("--load-in-4bit", action="store_true",
                         help="Load base model in 4-bit quantization")
+    parser.add_argument("--num-bootstraps", type=int, default=0,
+                        help="Number of bootstrap resamples (0 to disable)")
+    parser.add_argument("--bootstrap-alpha", type=float, default=0.05,
+                        help="Alpha level for bootstrap confidence intervals (e.g. 0.05 for 95% CI)")
 
     args = parser.parse_args()
 
@@ -111,16 +117,19 @@ def main():
     model_loader = MODEL_REGISTRY.get("unsloth_vlm")()
     model, tokenizer = model_loader.load(model_config)
 
-    # ---- 2. Load adapter ----
-    adapter_path = Path(args.adapter_path)
-    if not adapter_path.exists():
-        logger.error(f"Adapter path does not exist: {adapter_path}")
-        sys.exit(1)
+    # ---- 2. Load adapter (if provided) ----
+    if args.adapter_path:
+        adapter_path = Path(args.adapter_path)
+        if not adapter_path.exists():
+            logger.error(f"Adapter path does not exist: {adapter_path}")
+            sys.exit(1)
 
-    logger.info(f"Loading adapter from: {adapter_path}")
-    from peft import PeftModel
-    model = PeftModel.from_pretrained(model, str(adapter_path))
-    logger.info("Adapter loaded successfully.")
+        logger.info(f"Loading adapter from: {adapter_path}")
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, str(adapter_path))
+        logger.info("Adapter loaded successfully.")
+    else:
+        logger.info("No adapter specified — evaluating base model.")
 
     # ---- 3. Load dataset (eval split only) ----
     logger.info(f"Loading dataset: {args.dataset_name}")
@@ -136,8 +145,8 @@ def main():
         eval_ds = _train_ds
 
     # ---- 4. Evaluate ----
-    logger.info(f"Running evaluation with metrics: {args.metrics}")
-    evaluator = EVALUATOR_REGISTRY.get("vlm_gen")()
+    logger.info(f"Running evaluation with evaluator={args.evaluator}, metrics={args.metrics}")
+    evaluator = EVALUATOR_REGISTRY.get(args.evaluator)()
     metrics = evaluator.evaluate(
         model=model,
         tokenizer=tokenizer,
@@ -149,6 +158,8 @@ def main():
         metrics=args.metrics,
         bert_model=args.bert_model,
         enable_thinking=args.enable_thinking,
+        num_bootstraps=args.num_bootstraps,
+        bootstrap_alpha=args.bootstrap_alpha,
     )
 
     # ---- 5. Save results ----

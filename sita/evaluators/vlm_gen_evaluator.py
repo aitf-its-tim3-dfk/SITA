@@ -158,6 +158,8 @@ class VLMGenEvaluator(BaseEvaluator):
         batch_size = int(kwargs.get("batch_size", 1))
         num_workers = int(kwargs.get("num_workers", 0))
         enable_thinking = kwargs.get("enable_thinking", False)
+        num_bootstraps = int(kwargs.get("num_bootstraps", 0))
+        bootstrap_alpha = float(kwargs.get("bootstrap_alpha", 0.05))
         max_image_size = kwargs.get("max_image_size", 1024)  # cap longest side (px)
         if max_image_size is not None:
             max_image_size = int(max_image_size)
@@ -307,6 +309,31 @@ class VLMGenEvaluator(BaseEvaluator):
         # ---- Classification metrics ----
         metrics = self._compute_classification(gt_labels, pred_labels)
 
+        if num_bootstraps > 0:
+            import numpy as np
+            logger.info(f"Running {num_bootstraps} bootstrap resamples for classification metrics…")
+            n_samples = len(gt_labels)
+            boot_metrics = []
+            gt_arr = np.array(gt_labels)
+            pred_arr = np.array(pred_labels)
+            
+            for _ in tqdm(range(num_bootstraps), desc="Bootstrapping"):
+                indices = np.random.choice(n_samples, size=n_samples, replace=True)
+                sample_gt = gt_arr[indices].tolist()
+                sample_pred = pred_arr[indices].tolist()
+                b_metrics = self._compute_classification(sample_gt, sample_pred)
+                boot_metrics.append(b_metrics)
+                
+            lower_q = (bootstrap_alpha / 2.0) * 100
+            upper_q = (1.0 - bootstrap_alpha / 2.0) * 100
+            
+            scalar_keys = [k for k, v in metrics.items() if isinstance(v, (int, float))]
+            for k in scalar_keys:
+                values = [bm[k] for bm in boot_metrics if k in bm]
+                if values:
+                    metrics[f"{k}_ci_lower"] = np.percentile(values, lower_q)
+                    metrics[f"{k}_ci_upper"] = np.percentile(values, upper_q)
+
         # ---- Text-similarity metrics (configurable) ----
         if "bertscore" in requested_metrics:
             metrics.update(
@@ -319,17 +346,21 @@ class VLMGenEvaluator(BaseEvaluator):
 
         # Log summary
         for k, v in sorted(metrics.items()):
-            logger.info(f"  {k}: {v:.4f}")
+            if isinstance(v, float):
+                logger.info(f"  {k}: {v:.4f}")
+            elif not isinstance(v, dict): # don't print huge dicts like confusion_matrix
+                logger.info(f"  {k}: {v}")
 
         return metrics
 
     # ------------------------------------------------------------------
     @staticmethod
-    def _compute_classification(gt: list[str], pred: list[str]) -> dict[str, float]:
+    def _compute_classification(gt: list[str], pred: list[str]) -> dict[str, Any]:
         try:
             from sklearn.metrics import (
                 accuracy_score,
                 precision_recall_fscore_support,
+                confusion_matrix,
             )
         except ImportError:
             logger.warning(
@@ -366,6 +397,12 @@ class VLMGenEvaluator(BaseEvaluator):
             metrics[f"cls_{safe}_recall"] = r
             metrics[f"cls_{safe}_f1"] = f
             metrics[f"cls_{safe}_support"] = int(s)
+
+        cm = confusion_matrix(gt, pred, labels=all_labels)
+        metrics["confusion_matrix"] = {
+            "labels": all_labels,
+            "matrix": cm.tolist(),
+        }
 
         return metrics
 
