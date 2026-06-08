@@ -19,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 
+import unsloth
 import argparse
 import importlib
 import json
@@ -59,36 +60,72 @@ def main():
     parser = argparse.ArgumentParser(
         description="SITA eval-only: load adapter → evaluate → save metrics",
     )
-    parser.add_argument("--base-model", required=True,
-                        help="HF model ID or local path for the base model")
-    parser.add_argument("--adapter-path", default=None,
-                        help="Path to the adapter directory (omit to eval base model)")
-    parser.add_argument("--dataset-name", default="dfk_vlm_dataset_v3",
-                        help="Dataset registry key (dfk_vlm_dataset_v2 or v3)")
-    parser.add_argument("--data-dir", required=True,
-                        help="Path to the dataset directory")
-    parser.add_argument("--metrics", nargs="+", default=["bertscore"],
-                        help="Metrics to compute: bertscore, rouge, or both")
-    parser.add_argument("--output", default="metrics.json",
-                        help="Path to save the output metrics JSON")
-    parser.add_argument("--chat-template", default=None,
-                        help="Path to a Jinja chat template file")
+    parser.add_argument(
+        "--base-model",
+        required=True,
+        help="HF model ID or local path for the base model",
+    )
+    parser.add_argument(
+        "--adapter-path",
+        default=None,
+        help="Path to the adapter directory (omit to eval base model)",
+    )
+    parser.add_argument(
+        "--dataset-name",
+        default="dfk_vlm_dataset_v3",
+        help="Dataset registry key (dfk_vlm_dataset_v2 or v3)",
+    )
+    parser.add_argument(
+        "--data-dir", required=True, help="Path to the dataset directory"
+    )
+    parser.add_argument(
+        "--metrics",
+        nargs="+",
+        default=["bertscore"],
+        help="Metrics to compute: bertscore, rouge, or both",
+    )
+    parser.add_argument(
+        "--output", default="metrics.json", help="Path to save the output metrics JSON"
+    )
+    parser.add_argument(
+        "--chat-template", default=None, help="Path to a Jinja chat template file"
+    )
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--temperature", type=float, default=0.0)
-    parser.add_argument("--bert-model", default="bert-base-multilingual-cased",
-                        help="BERT model for BERTScore (ignored if bertscore not in metrics)")
-    parser.add_argument("--evaluator", default="vlm_gen",
-                        help="Evaluator registry key (vlm_gen or vlm_captioning)")
-    parser.add_argument("--enable-thinking", action="store_true",
-                        help="Enable thinking mode for generation")
-    parser.add_argument("--load-in-4bit", action="store_true",
-                        help="Load base model in 4-bit quantization")
-    parser.add_argument("--num-bootstraps", type=int, default=0,
-                        help="Number of bootstrap resamples (0 to disable)")
-    parser.add_argument("--bootstrap-alpha", type=float, default=0.05,
-                        help="Alpha level for bootstrap confidence intervals (e.g. 0.05 for 95% CI)")
+    parser.add_argument(
+        "--bert-model",
+        default="bert-base-multilingual-cased",
+        help="BERT model for BERTScore (ignored if bertscore not in metrics)",
+    )
+    parser.add_argument(
+        "--evaluator",
+        default="vlm_gen",
+        help="Evaluator registry key (vlm_gen or vlm_captioning)",
+    )
+    parser.add_argument(
+        "--enable-thinking",
+        action="store_true",
+        help="Enable thinking mode for generation",
+    )
+    parser.add_argument(
+        "--load-in-4bit",
+        action="store_true",
+        help="Load base model in 4-bit quantization",
+    )
+    parser.add_argument(
+        "--num-bootstraps",
+        type=int,
+        default=0,
+        help="Number of bootstrap resamples (0 to disable)",
+    )
+    parser.add_argument(
+        "--bootstrap-alpha",
+        type=float,
+        default=0.05,
+        help="Alpha level for bootstrap confidence intervals (e.g. 0.05 for 95% CI)",
+    )
 
     args = parser.parse_args()
 
@@ -126,6 +163,7 @@ def main():
 
         logger.info(f"Loading adapter from: {adapter_path}")
         from peft import PeftModel
+
         model = PeftModel.from_pretrained(model, str(adapter_path))
         logger.info("Adapter loaded successfully.")
     else:
@@ -145,7 +183,9 @@ def main():
         eval_ds = _train_ds
 
     # ---- 4. Evaluate ----
-    logger.info(f"Running evaluation with evaluator={args.evaluator}, metrics={args.metrics}")
+    logger.info(
+        f"Running evaluation with evaluator={args.evaluator}, metrics={args.metrics}"
+    )
     evaluator = EVALUATOR_REGISTRY.get(args.evaluator)()
     metrics = evaluator.evaluate(
         model=model,
