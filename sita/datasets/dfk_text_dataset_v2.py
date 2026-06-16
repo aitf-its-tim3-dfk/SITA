@@ -127,14 +127,16 @@ class DFKTextDatasetV2(BaseDatasetLoader):
 
         # Load raw samples
         if use_fixed_splits:
-            train_file = kwargs.pop("train_file", "train.json")
-            val_file = kwargs.pop("val_file", "val.json")
+            train_file = kwargs.pop("train_file", "train_v3_trl.jsonl")
+            val_file = kwargs.pop("val_file", "val_v3_trl.jsonl")
             train_path = data_dir / train_file
             val_path = data_dir / val_file
             if not train_path.exists() or not val_path.exists():
                 raise FileNotFoundError(f"Train or val file not found: {train_path}, {val_path}")
-            raw_train = [_parse_sample(r) for r in _read_json(train_path)]
-            raw_val = [_parse_sample(r) for r in _read_json(val_path)]
+            read_fn_train = _read_jsonl if train_path.suffix == ".jsonl" else _read_json
+            read_fn_val = _read_jsonl if val_path.suffix == ".jsonl" else _read_json
+            raw_train = [_parse_sample(r) for r in read_fn_train(train_path)]
+            raw_val = [_parse_sample(r) for r in read_fn_val(val_path)]
             raw_train = [r for r in raw_train if r is not None]
             raw_val = [r for r in raw_val if r is not None]
             logger.info(
