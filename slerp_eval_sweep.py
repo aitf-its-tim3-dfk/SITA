@@ -122,6 +122,7 @@ def main() -> None:
     parser.add_argument("--dataset-name", nargs="+", required=True, help="List of dataset names (1:1 with evaluators)")
     parser.add_argument("--data-dir", type=str, default="", help="Base data directory")
     parser.add_argument("--data-dir-override", nargs="*", default=[], help="Format: eval_name=/path")
+    parser.add_argument("--val-file-override", nargs="*", default=[], help="Format: eval_name=filename")
 
     parser.add_argument("--metrics", nargs="+", default=["bertscore", "rouge"])
     parser.add_argument("--eval-base", action="store_true", help="Eval base model before adding adapters")
@@ -177,13 +178,20 @@ def main() -> None:
     else:
         parser.error("Must provide either --weights or --grid-step")
 
-    # ---- Parse data-dir overrides ----
+    # ---- Parse overrides ----
     data_dir_overrides: dict[str, str] = {}
     for override in args.data_dir_override:
         if "=" not in override:
             parser.error(f"--data-dir-override must be 'name=/path', got: {override!r}")
         name, path = override.split("=", 1)
         data_dir_overrides[name.strip()] = path.strip()
+
+    val_file_overrides: dict[str, str] = {}
+    for override in args.val_file_override:
+        if "=" not in override:
+            parser.error(f"--val-file-override must be 'name=filename', got: {override!r}")
+        name, filename = override.split("=", 1)
+        val_file_overrides[name.strip()] = filename.strip()
 
     # ---- 1. Load base model ----
     logger.info(f"Loading base model: {args.base_model}")
@@ -217,6 +225,9 @@ def main() -> None:
         data_dir = data_dir_overrides.get(eval_name, args.data_dir)
         logger.info(f"Loading dataset '{ds_name}' for evaluator '{eval_name}' from {data_dir}")
         ds_kwargs = {"data_dir": data_dir}
+        if eval_name in val_file_overrides:
+            ds_kwargs["val_file"] = val_file_overrides[eval_name]
+            logger.info(f"  Overriding val_file -> {val_file_overrides[eval_name]}")
         if args.no_merge_labels:
             ds_kwargs["merge_labels"] = False
         dataset_config = DatasetConfig(
