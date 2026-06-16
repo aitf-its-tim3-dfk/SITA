@@ -1,7 +1,7 @@
 """DFK Vision-Language Dataset V4 — social media content analysis (JSONL support).
 
 Supports:
-- Fixed splits (train.json / val.json)
+- Fixed splits (train.jsonl / val.jsonl)
 - Single JSON with ratio split
 - JSONL file with automatic train/val split
 - Generates messages similar to dfk_vlm_dataset_v3
@@ -63,13 +63,15 @@ def _parse_sample(sample: list | dict, data_dir: Path) -> dict | None:
         for item in content_items:
             item_type = item.get("type")
             if item_type == "text":
-                clean_msg["content"].append({"type": "text", "text": item.get("text", "")})
+                clean_msg["content"].append(
+                    {"type": "text", "text": item.get("text", "")}
+                )
             elif item_type == "image":
                 clean_msg["content"].append({"type": "image"})
                 raw_path = item.get("image")
                 if raw_path:
                     if raw_path.startswith("images/images/"):
-                        raw_path = raw_path[len("images/"):]
+                        raw_path = raw_path[len("images/") :]
                     img_path = data_dir / raw_path
                     if not img_path.exists():
                         logger.warning("Image not found, skipping sample: %s", img_path)
@@ -90,7 +92,7 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
 
     Supports three input modes:
 
-    1. **Fixed splits** (default): reads ``train.json`` and ``val.json`` from
+    1. **Fixed splits** (default): reads ``train.jsonl`` and ``val.jsonl`` from
        ``data_dir``.  No shuffling or ratio splitting is performed.
 
     2. **JSONL mode**: reads a single JSONL file and splits it into
@@ -125,10 +127,10 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
 
     Config kwargs:
         - ``data_dir`` (str): path to dataset directory (required)
-        - ``use_fixed_splits`` (bool): use train.json/val.json, default True
+        - ``use_fixed_splits`` (bool): use train.jsonl/val.jsonl, default True
         - ``use_jsonl`` (bool): use JSONL format, default False
-        - ``train_file`` (str): training JSON filename, default ``train.json``
-        - ``val_file`` (str): validation JSON filename, default ``val.json``
+        - ``train_file`` (str): training JSON filename, default ``train.jsonl``
+        - ``val_file`` (str): validation JSON filename, default ``val.jsonl``
         - ``jsonl_file`` (str): JSONL filename when use_jsonl=True, default ``dataset.jsonl``
         - ``json_file`` (str): single JSON filename for ratio split, default ``dataset.json``
         - ``train_ratio`` (float): fraction of data for training when ratio
@@ -166,7 +168,9 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
             train_ratio: 0.8
     """
 
-    def load(self, config: DatasetConfig, tokenizer: Any) -> tuple[list[dict], list[dict] | None]:
+    def load(
+        self, config: DatasetConfig, tokenizer: Any
+    ) -> tuple[list[dict], list[dict] | None]:
         kwargs = dict(config.kwargs)
         data_dir = Path(kwargs.pop("data_dir"))
         use_fixed_splits = bool(kwargs.pop("use_fixed_splits", True))
@@ -180,17 +184,19 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
             "Anda adalah seorang analis konten media sosial ahli. "
             "Diberikan tangkapan layar dari sebuah konten, "
             "tentukan label kategori pelanggaran dan berikan analisis detail "
-            "mengenai pelanggaran yang ditemukan."
+            "mengenai pelanggaran yang ditemukan.",
         )
 
         # Load raw samples
         if use_fixed_splits:
-            train_file = kwargs.pop("train_file", "train.json")
-            val_file = kwargs.pop("val_file", "val.json")
+            train_file = kwargs.pop("train_file", "train.jsonl")
+            val_file = kwargs.pop("val_file", "val.jsonl")
             train_path = data_dir / train_file
             val_path = data_dir / val_file
             if not train_path.exists() or not val_path.exists():
-                raise FileNotFoundError(f"Train or val file not found: {train_path}, {val_path}")
+                raise FileNotFoundError(
+                    f"Train or val file not found: {train_path}, {val_path}"
+                )
             raw_train = [_parse_sample(r, data_dir) for r in _read_json(train_path)]
             raw_val = [_parse_sample(r, data_dir) for r in _read_json(val_path)]
             raw_train = [r for r in raw_train if r is not None]
@@ -210,7 +216,9 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
                 raise FileNotFoundError(f"JSONL file not found: {jsonl_path}")
             all_rows = [_parse_sample(r, data_dir) for r in _read_jsonl(jsonl_path)]
             all_rows = [r for r in all_rows if r is not None]
-            logger.info("Loaded %d valid samples from %s", len(all_rows), jsonl_path.name)
+            logger.info(
+                "Loaded %d valid samples from %s", len(all_rows), jsonl_path.name
+            )
             rng = random.Random(seed)
             rng.shuffle(all_rows)
             split_idx = int(len(all_rows) * train_ratio)
@@ -230,7 +238,9 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
                 raise FileNotFoundError(f"JSON file not found: {json_path}")
             all_rows = [_parse_sample(r, data_dir) for r in _read_json(json_path)]
             all_rows = [r for r in all_rows if r is not None]
-            logger.info("Loaded %d valid samples from %s", len(all_rows), json_path.name)
+            logger.info(
+                "Loaded %d valid samples from %s", len(all_rows), json_path.name
+            )
             rng = random.Random(seed)
             rng.shuffle(all_rows)
             split_idx = int(len(all_rows) * train_ratio)
@@ -275,11 +285,15 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
         try:
             from datasets import Dataset, Image as HFImage, Sequence
 
-            train_ds = Dataset.from_generator(gen, gen_kwargs={"row_list": raw_train, "as_paths": True})
+            train_ds = Dataset.from_generator(
+                gen, gen_kwargs={"row_list": raw_train, "as_paths": True}
+            )
             train_ds = train_ds.cast_column("images", Sequence(HFImage()))
             eval_ds = None
             if raw_val:
-                eval_ds = Dataset.from_generator(gen, gen_kwargs={"row_list": raw_val, "as_paths": True})
+                eval_ds = Dataset.from_generator(
+                    gen, gen_kwargs={"row_list": raw_val, "as_paths": True}
+                )
                 eval_ds = eval_ds.cast_column("images", Sequence(HFImage()))
         except ImportError:
             logger.warning("datasets library not found, falling back to list loading")
