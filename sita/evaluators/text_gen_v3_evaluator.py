@@ -95,12 +95,12 @@ def _extract_ground_truth(sample: dict, normalize: bool = True) -> tuple[str, st
     """Pull the reference answer text from a conversation dict."""
     for msg in sample.get("messages", []):
         if msg.get("role") == "assistant":
-            for part in msg.get("content", []):
-                if part.get("type") == "text":
+            content = msg.get("content", [])
+            if isinstance(content, str):
+                return _parse_response_v3(content, normalize=normalize)
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
                     return _parse_response_v3(part["text"], normalize=normalize)
-            # If content is a string
-            if isinstance(msg.get("content"), str):
-                return _parse_response_v3(msg["content"], normalize=normalize)
     return "", ""
 
 
