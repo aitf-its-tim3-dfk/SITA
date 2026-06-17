@@ -1,7 +1,7 @@
 """DFK Vision-Language Dataset V4 — social media content analysis (JSONL support).
 
 Supports:
-- Fixed splits (train.jsonl / val.jsonl)
+- Fixed splits (train.jsonl / validation.jsonl)
 - Single JSON with ratio split
 - JSONL file with automatic train/val split
 - Generates messages similar to dfk_vlm_dataset_v3
@@ -92,7 +92,7 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
 
     Supports three input modes:
 
-    1. **Fixed splits** (default): reads ``train.jsonl`` and ``val.jsonl`` from
+    1. **Fixed splits** (default): reads ``train.jsonl`` and ``validation.jsonl`` from
        ``data_dir``.  No shuffling or ratio splitting is performed.
 
     2. **JSONL mode**: reads a single JSONL file and splits it into
@@ -127,10 +127,10 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
 
     Config kwargs:
         - ``data_dir`` (str): path to dataset directory (required)
-        - ``use_fixed_splits`` (bool): use train.jsonl/val.jsonl, default True
+        - ``use_fixed_splits`` (bool): use train.jsonl/validation.jsonl, default True
         - ``use_jsonl`` (bool): use JSONL format, default False
         - ``train_file`` (str): training JSON filename, default ``train.jsonl``
-        - ``val_file`` (str): validation JSON filename, default ``val.jsonl``
+        - ``val_file`` (str): validation JSON filename, default ``validation.jsonl``
         - ``jsonl_file`` (str): JSONL filename when use_jsonl=True, default ``dataset.jsonl``
         - ``json_file`` (str): single JSON filename for ratio split, default ``dataset.json``
         - ``train_ratio`` (float): fraction of data for training when ratio
@@ -190,7 +190,7 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
         # Load raw samples
         if use_fixed_splits:
             train_file = kwargs.pop("train_file", "train.jsonl")
-            val_file = kwargs.pop("val_file", "val.jsonl")
+            val_file = kwargs.pop("val_file", "validation.jsonl")
             train_path = data_dir / train_file
             val_path = data_dir / val_file
             if not train_path.exists() or not val_path.exists():
