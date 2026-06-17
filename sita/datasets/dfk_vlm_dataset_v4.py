@@ -74,9 +74,44 @@ def _parse_sample(sample: list | dict, data_dir: Path, image_cache: dict[str, Pa
                     if image_cache is not None and filename in image_cache:
                         img_path = image_cache[filename]
                     else:
-                        if raw_path.startswith("images/images/"):
-                            raw_path = raw_path[len("images/") :]
-                        img_path = data_dir / raw_path
+                        img_path = None
+                        if image_cache is not None:
+                            import re
+                            req_p = Path(raw_path)
+                            req_parent_name = req_p.parent.name
+                            frame_match = re.search(r'(_frame_\d+)', filename)
+                            frame_str = frame_match.group(1) if frame_match else ""
+                            base_req_stem = req_p.stem.replace(frame_str, "")
+                            
+                            best_match = None
+                            best_score = 0
+                            
+                            for p in image_cache.values():
+                                if frame_str and frame_str not in p.name:
+                                    continue
+                                
+                                base_disk_stem = p.stem.replace(frame_str, "")
+                                score = 0
+                                if base_disk_stem and base_req_stem:
+                                    if base_disk_stem in base_req_stem or base_req_stem in base_disk_stem:
+                                        score += min(len(base_disk_stem), len(base_req_stem))
+                                
+                                if score > 0:
+                                    if p.parent.name and (p.parent.name in req_parent_name or req_parent_name in p.parent.name):
+                                        score += 50
+                                
+                                if score > best_score and score >= 5:
+                                    best_score = score
+                                    best_match = p
+                                    
+                            if best_match:
+                                img_path = best_match
+
+                        if img_path is None:
+                            if raw_path.startswith("images/images/"):
+                                raw_path = raw_path[len("images/") :]
+                            img_path = data_dir / raw_path
+
                     if not img_path.exists():
                         logger.warning("Image not found, skipping sample: %s (tried filename: %s)", img_path, filename)
                         return None
@@ -195,9 +230,15 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
         logger.info("Building image cache to resolve paths resiliently...")
         image_cache: dict[str, Path] = {}
         search_dirs = [data_dir, data_dir.parent]
+        extra_search = kwargs.pop("image_search_dirs", [])
+        if isinstance(extra_search, str):
+            extra_search = [extra_search]
+        for ed in extra_search:
+            search_dirs.append(Path(ed))
+
         for sdir in search_dirs:
             if sdir.exists():
-                for ext in ["*.jpg", "*.jpeg", "*.png", "*.webp"]:
+                for ext in ["*.jpg", "*.jpeg", "*.png", "*.webp", "*.gif", "*.JPG", "*.JPEG", "*.PNG", "*.WEBP", "*.GIF"]:
                     for p in sdir.rglob(ext):
                         if p.name not in image_cache:
                             image_cache[p.name] = p
