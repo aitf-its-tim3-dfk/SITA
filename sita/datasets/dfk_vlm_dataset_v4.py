@@ -197,8 +197,10 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
                 raise FileNotFoundError(
                     f"Train or val file not found: {train_path}, {val_path}"
                 )
-            raw_train = [_parse_sample(r, data_dir) for r in _read_json(train_path)]
-            raw_val = [_parse_sample(r, data_dir) for r in _read_json(val_path)]
+            read_fn_train = _read_jsonl if train_path.suffix == ".jsonl" else _read_json
+            read_fn_val = _read_jsonl if val_path.suffix == ".jsonl" else _read_json
+            raw_train = [_parse_sample(r, data_dir) for r in read_fn_train(train_path)]
+            raw_val = [_parse_sample(r, data_dir) for r in read_fn_val(val_path)]
             raw_train = [r for r in raw_train if r is not None]
             raw_val = [r for r in raw_val if r is not None]
             logger.info(
