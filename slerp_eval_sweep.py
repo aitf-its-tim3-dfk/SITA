@@ -182,6 +182,11 @@ def main() -> None:
         action="store_true",
         help="Keep original 5-class labels instead of merging to 4",
     )
+    parser.add_argument(
+        "--use-fixed-splits",
+        action="store_true",
+        help="Force use_fixed_splits=True for all datasets",
+    )
 
     args = parser.parse_args()
     _import_builtins()
@@ -277,6 +282,8 @@ def main() -> None:
             logger.info(f"  Overriding val_file -> {val_file_overrides[eval_name]}")
         if args.no_merge_labels:
             ds_kwargs["merge_labels"] = False
+        if args.use_fixed_splits:
+            ds_kwargs["use_fixed_splits"] = True
         dataset_config = DatasetConfig(
             name=ds_name,
             kwargs=ds_kwargs,
