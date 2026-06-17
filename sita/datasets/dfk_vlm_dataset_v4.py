@@ -42,7 +42,7 @@ def _read_jsonl(jsonl_path: Path) -> list[Any]:
     return samples
 
 
-def _parse_sample(sample: list | dict, data_dir: Path) -> dict | None:
+def _parse_sample(sample: list | dict, data_dir: Path, image_cache: dict[str, Path] | None = None) -> dict | None:
     """Parse sample JSON into internal dict format."""
     if isinstance(sample, dict) and "messages" in sample:
         messages = sample["messages"]
@@ -70,11 +70,15 @@ def _parse_sample(sample: list | dict, data_dir: Path) -> dict | None:
                 clean_msg["content"].append({"type": "image"})
                 raw_path = item.get("image")
                 if raw_path:
-                    if raw_path.startswith("images/images/"):
-                        raw_path = raw_path[len("images/") :]
-                    img_path = data_dir / raw_path
+                    filename = Path(raw_path).name
+                    if image_cache is not None and filename in image_cache:
+                        img_path = image_cache[filename]
+                    else:
+                        if raw_path.startswith("images/images/"):
+                            raw_path = raw_path[len("images/") :]
+                        img_path = data_dir / raw_path
                     if not img_path.exists():
-                        logger.warning("Image not found, skipping sample: %s", img_path)
+                        logger.warning("Image not found, skipping sample: %s (tried filename: %s)", img_path, filename)
                         return None
                     image_paths.append(str(img_path))
 
@@ -187,6 +191,18 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
             "mengenai pelanggaran yang ditemukan.",
         )
 
+        # Build image cache
+        logger.info("Building image cache to resolve paths resiliently...")
+        image_cache: dict[str, Path] = {}
+        search_dirs = [data_dir, data_dir.parent]
+        for sdir in search_dirs:
+            if sdir.exists():
+                for ext in ["*.jpg", "*.jpeg", "*.png", "*.webp"]:
+                    for p in sdir.rglob(ext):
+                        if p.name not in image_cache:
+                            image_cache[p.name] = p
+        logger.info("Found %d images across data directories.", len(image_cache))
+
         # Load raw samples
         if use_fixed_splits:
             train_file = kwargs.pop("train_file", "train.jsonl")
@@ -199,8 +215,8 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
                 )
             read_fn_train = _read_jsonl if train_path.suffix == ".jsonl" else _read_json
             read_fn_val = _read_jsonl if val_path.suffix == ".jsonl" else _read_json
-            raw_train = [_parse_sample(r, data_dir) for r in read_fn_train(train_path)]
-            raw_val = [_parse_sample(r, data_dir) for r in read_fn_val(val_path)]
+            raw_train = [_parse_sample(r, data_dir, image_cache) for r in read_fn_train(train_path)]
+            raw_val = [_parse_sample(r, data_dir, image_cache) for r in read_fn_val(val_path)]
             raw_train = [r for r in raw_train if r is not None]
             raw_val = [r for r in raw_val if r is not None]
             logger.info(
@@ -216,7 +232,7 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
             jsonl_path = data_dir / jsonl_file
             if not jsonl_path.exists():
                 raise FileNotFoundError(f"JSONL file not found: {jsonl_path}")
-            all_rows = [_parse_sample(r, data_dir) for r in _read_jsonl(jsonl_path)]
+            all_rows = [_parse_sample(r, data_dir, image_cache) for r in _read_jsonl(jsonl_path)]
             all_rows = [r for r in all_rows if r is not None]
             logger.info(
                 "Loaded %d valid samples from %s", len(all_rows), jsonl_path.name
@@ -238,7 +254,7 @@ class DFKVLMDatasetV4(BaseDatasetLoader):
             json_path = data_dir / json_file
             if not json_path.exists():
                 raise FileNotFoundError(f"JSON file not found: {json_path}")
-            all_rows = [_parse_sample(r, data_dir) for r in _read_json(json_path)]
+            all_rows = [_parse_sample(r, data_dir, image_cache) for r in _read_json(json_path)]
             all_rows = [r for r in all_rows if r is not None]
             logger.info(
                 "Loaded %d valid samples from %s", len(all_rows), json_path.name
