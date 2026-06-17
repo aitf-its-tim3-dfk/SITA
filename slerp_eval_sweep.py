@@ -25,6 +25,7 @@ Usage with grid sweep:
 
 from __future__ import annotations
 
+import unsloth
 import argparse
 import gc
 import importlib
@@ -70,7 +71,7 @@ def _import_builtins() -> None:
 def generate_grid(n_models: int, step: float) -> list[tuple[float, ...]]:
     """Generate all combinations of `n_models` weights that sum to 1.0."""
     steps = int(round(1.0 / step))
-    
+
     def _generate(n_left, target_sum):
         if n_left == 1:
             yield (target_sum,)
@@ -112,23 +113,55 @@ def _run_all_evals(model, tokenizer, eval_datasets, evaluators, eval_kwargs):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Multi-adapter merge sweep")
-    parser.add_argument("--base-model", type=str, required=True, help="Base model path/name")
-    parser.add_argument("--adapters", nargs="+", required=True, help="List of adapter paths")
+    parser.add_argument(
+        "--base-model", type=str, required=True, help="Base model path/name"
+    )
+    parser.add_argument(
+        "--adapters", nargs="+", required=True, help="List of adapter paths"
+    )
 
-    parser.add_argument("--weights", nargs="+", help="List of comma-separated weights, e.g. '0.5,0.5' '0.3,0.7'")
-    parser.add_argument("--grid-step", type=float, help="Step size for auto-generating weight grid (e.g. 0.2)")
+    parser.add_argument(
+        "--weights",
+        nargs="+",
+        help="List of comma-separated weights, e.g. '0.5,0.5' '0.3,0.7'",
+    )
+    parser.add_argument(
+        "--grid-step",
+        type=float,
+        help="Step size for auto-generating weight grid (e.g. 0.2)",
+    )
 
-    parser.add_argument("--evaluator", nargs="+", required=True, help="List of evaluator names")
-    parser.add_argument("--dataset-name", nargs="+", required=True, help="List of dataset names (1:1 with evaluators)")
+    parser.add_argument(
+        "--evaluator", nargs="+", required=True, help="List of evaluator names"
+    )
+    parser.add_argument(
+        "--dataset-name",
+        nargs="+",
+        required=True,
+        help="List of dataset names (1:1 with evaluators)",
+    )
     parser.add_argument("--data-dir", type=str, default="", help="Base data directory")
-    parser.add_argument("--data-dir-override", nargs="*", default=[], help="Format: eval_name=/path")
-    parser.add_argument("--val-file-override", nargs="*", default=[], help="Format: eval_name=filename")
+    parser.add_argument(
+        "--data-dir-override", nargs="*", default=[], help="Format: eval_name=/path"
+    )
+    parser.add_argument(
+        "--val-file-override", nargs="*", default=[], help="Format: eval_name=filename"
+    )
 
     parser.add_argument("--metrics", nargs="+", default=["bertscore", "rouge"])
-    parser.add_argument("--eval-base", action="store_true", help="Eval base model before adding adapters")
+    parser.add_argument(
+        "--eval-base",
+        action="store_true",
+        help="Eval base model before adding adapters",
+    )
     parser.add_argument("--max-eval-samples", type=int, default=None)
     parser.add_argument("--output", type=str, default="merge_sweep_results.json")
-    parser.add_argument("--save-adapters-dir", type=str, default=None, help="Directory to save merged adapters permanently")
+    parser.add_argument(
+        "--save-adapters-dir",
+        type=str,
+        default=None,
+        help="Directory to save merged adapters permanently",
+    )
 
     # Model kwargs
     parser.add_argument("--load-in-4bit", action="store_true")
@@ -139,11 +172,16 @@ def main() -> None:
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--num-workers", type=int, default=0)
-    parser.add_argument("--bert-model", type=str, default="bert-base-multilingual-cased")
+    parser.add_argument(
+        "--bert-model", type=str, default="bert-base-multilingual-cased"
+    )
     parser.add_argument("--enable-thinking", action="store_true")
     parser.add_argument("--max-image-size", type=int, default=2000)
-    parser.add_argument("--no-merge-labels", action="store_true",
-                        help="Keep original 5-class labels instead of merging to 4")
+    parser.add_argument(
+        "--no-merge-labels",
+        action="store_true",
+        help="Keep original 5-class labels instead of merging to 4",
+    )
 
     args = parser.parse_args()
     _import_builtins()
@@ -171,11 +209,15 @@ def main() -> None:
         for w_str in args.weights:
             w_tuple = tuple(float(x.strip()) for x in w_str.split(","))
             if len(w_tuple) != n_adapters:
-                parser.error(f"Weight vector '{w_str}' length does not match number of adapters ({n_adapters})")
+                parser.error(
+                    f"Weight vector '{w_str}' length does not match number of adapters ({n_adapters})"
+                )
             weight_sets.append(w_tuple)
     elif args.grid_step:
         weight_sets = generate_grid(n_adapters, args.grid_step)
-        logger.info(f"Generated {len(weight_sets)} weight combinations using step {args.grid_step}")
+        logger.info(
+            f"Generated {len(weight_sets)} weight combinations using step {args.grid_step}"
+        )
     else:
         parser.error("Must provide either --weights or --grid-step")
 
@@ -190,7 +232,9 @@ def main() -> None:
     val_file_overrides: dict[str, str] = {}
     for override in args.val_file_override:
         if "=" not in override:
-            parser.error(f"--val-file-override must be 'name=filename', got: {override!r}")
+            parser.error(
+                f"--val-file-override must be 'name=filename', got: {override!r}"
+            )
         name, filename = override.split("=", 1)
         val_file_overrides[name.strip()] = filename.strip()
 
@@ -224,7 +268,9 @@ def main() -> None:
     evaluators = []
     for eval_name, ds_name in zip(eval_names, ds_names):
         data_dir = data_dir_overrides.get(eval_name, args.data_dir)
-        logger.info(f"Loading dataset '{ds_name}' for evaluator '{eval_name}' from {data_dir}")
+        logger.info(
+            f"Loading dataset '{ds_name}' for evaluator '{eval_name}' from {data_dir}"
+        )
         ds_kwargs = {"data_dir": data_dir}
         if eval_name in val_file_overrides:
             ds_kwargs["val_file"] = val_file_overrides[eval_name]
@@ -243,7 +289,9 @@ def main() -> None:
             eval_ds = _train_ds
 
         if args.max_eval_samples is not None and len(eval_ds) > args.max_eval_samples:
-            logger.info(f"Capping {ds_name} eval from {len(eval_ds)} to {args.max_eval_samples} samples.")
+            logger.info(
+                f"Capping {ds_name} eval from {len(eval_ds)} to {args.max_eval_samples} samples."
+            )
             eval_ds = eval_ds.select(range(args.max_eval_samples))
 
         eval_datasets.append(eval_ds)
@@ -256,13 +304,16 @@ def main() -> None:
         logger.info("Evaluating base model")
         results["base"] = {
             "description": "Base model, no adapters",
-            "metrics": _run_all_evals(base_model, tokenizer, eval_datasets, evaluators, eval_kwargs)
+            "metrics": _run_all_evals(
+                base_model, tokenizer, eval_datasets, evaluators, eval_kwargs
+            ),
         }
         with open(args.output, "w") as f:
             json.dump(results, f, indent=2)
 
     # ---- 4. Merge Sweep with local script ----
     import peft
+
     model = base_model
     is_peft = False
 
@@ -278,7 +329,9 @@ def main() -> None:
         for w_tuple in weight_sets:
             w_str = ",".join(f"{w:.2f}" for w in w_tuple)
             config_name = f"w=[{w_str}]"
-            logger.info(f"========== Testing Merge configuration: {config_name} ==========")
+            logger.info(
+                f"========== Testing Merge configuration: {config_name} =========="
+            )
 
             adapter_path = Path(tmp_dir) / f"merged_{w_str.replace(',','_')}"
 
@@ -287,18 +340,22 @@ def main() -> None:
 
             logger.info("Loading merged adapter into PEFT...")
             if not is_peft:
-                model = peft.PeftModel.from_pretrained(base_model, str(adapter_path), adapter_name="slerp")
+                model = peft.PeftModel.from_pretrained(
+                    base_model, str(adapter_path), adapter_name="slerp"
+                )
                 is_peft = True
             else:
                 model.load_adapter(str(adapter_path), adapter_name="slerp")
 
             model.set_adapter("slerp")
 
-            metrics = _run_all_evals(model, tokenizer, eval_datasets, evaluators, eval_kwargs)
+            metrics = _run_all_evals(
+                model, tokenizer, eval_datasets, evaluators, eval_kwargs
+            )
             results[config_name] = {
                 "description": f"{'slerp' if n_adapters == 2 else 'multislerp'} weights=[{w_str}]",
                 "weights": w_tuple,
-                "metrics": metrics
+                "metrics": metrics,
             }
 
             with open(args.output, "w") as f:
@@ -316,6 +373,7 @@ def main() -> None:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     logger.info(f"Sweep complete! Results saved to {args.output}")
+
 
 if __name__ == "__main__":
     main()
