@@ -81,7 +81,7 @@ def generate_grid(n_models: int, step: float) -> list[tuple[float, ...]]:
 
     grid = []
     for int_tuple in _generate(n_models, steps):
-        grid.append(tuple(round(x * step, 4) for x in int_tuple))
+        grid.append(tuple(round(x / steps, 4) for x in int_tuple))
     return grid
 
 
@@ -128,6 +128,7 @@ def main() -> None:
     parser.add_argument("--eval-base", action="store_true", help="Eval base model before adding adapters")
     parser.add_argument("--max-eval-samples", type=int, default=None)
     parser.add_argument("--output", type=str, default="merge_sweep_results.json")
+    parser.add_argument("--save-adapters-dir", type=str, default=None, help="Directory to save merged adapters permanently")
 
     # Model kwargs
     parser.add_argument("--load-in-4bit", action="store_true")
@@ -265,7 +266,14 @@ def main() -> None:
     model = base_model
     is_peft = False
 
-    tmp_dir = tempfile.mkdtemp(prefix="merge_sweep_")
+    if args.save_adapters_dir:
+        tmp_dir = args.save_adapters_dir
+        Path(tmp_dir).mkdir(parents=True, exist_ok=True)
+        is_temp_dir = False
+    else:
+        tmp_dir = tempfile.mkdtemp(prefix="merge_sweep_")
+        is_temp_dir = True
+
     try:
         for w_tuple in weight_sets:
             w_str = ",".join(f"{w:.2f}" for w in w_tuple)
@@ -299,11 +307,13 @@ def main() -> None:
             logger.info("Unloading merged adapter...")
             model.delete_adapter("slerp")
 
-            # Delete merged adapter to save disk space
-            shutil.rmtree(adapter_path, ignore_errors=True)
+            # Delete merged adapter to save disk space if not saving
+            if not args.save_adapters_dir:
+                shutil.rmtree(adapter_path, ignore_errors=True)
 
     finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+        if is_temp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     logger.info(f"Sweep complete! Results saved to {args.output}")
 
