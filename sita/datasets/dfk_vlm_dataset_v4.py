@@ -60,7 +60,7 @@ def _parse_sample(sample: list | dict, data_dir: Path, image_cache: dict[str, Pa
         content = msg.get("content", [])
 
         if isinstance(content, str):
-            clean_msgs.append({"role": role, "content": content})
+            clean_msgs.append({"role": role, "content": [{"type": "text", "text": content}]})
             continue
 
         clean_msg = {"role": role, "content": []}
