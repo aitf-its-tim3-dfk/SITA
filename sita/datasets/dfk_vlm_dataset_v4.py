@@ -57,10 +57,17 @@ def _parse_sample(sample: list | dict, data_dir: Path, image_cache: dict[str, Pa
 
     for msg in messages:
         role = msg.get("role", "")
-        content_items = msg.get("content", [])
-        clean_msg = {"role": role, "content": []}
+        content = msg.get("content", [])
 
-        for item in content_items:
+        if isinstance(content, str):
+            clean_msgs.append({"role": role, "content": content})
+            continue
+
+        clean_msg = {"role": role, "content": []}
+        for item in content:
+            if isinstance(item, str):
+                continue # Skip if somehow we get a string here, but shouldn't happen with the check above
+            
             item_type = item.get("type")
             if item_type == "text":
                 clean_msg["content"].append(
